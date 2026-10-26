@@ -101,7 +101,7 @@ class ManualExampleChecks:
             async def do(self, action):
                 assert isinstance(action, Manual)
                 assert self.role == ("client" if remote else "host")
-                assert len(active) == (14 if remote else 10)
+                assert len(active) == (14 if remote else 11)
                 assert sum(event[-1] == "identity" for event in events) == 2
                 events.append(("manual",))
                 if failure in ("eof", "cancel", "collection"):
@@ -150,6 +150,8 @@ class ManualExampleChecks:
             expected[workload] = (
                 example.TrafficGeneratorProcessor if remote else example.RupProcessor
             )
+            if not remote:
+                expected["Fans"] = example.FansProcessor
             assert isinstance(processor, expected[log[1]])
             assert remote or log != ("server", "Rup"), "server service log is not latency"
             events.append((*log, "process"))
@@ -201,9 +203,9 @@ class ManualExampleChecks:
                 charts.assert_called_once()
                 datasets, report = charts.call_args.args
                 self.assertEqual(report.name, "charts.html")
-                self.assertEqual(len(datasets), 14 if remote else 10)
+                self.assertEqual(len(datasets), 14 if remote else 11)
                 expected_counts = (
-                    {"client": 7, "server": 7} if remote else {"host": 4, "client": 4, "server": 2}
+                    {"client": 7, "server": 7} if remote else {"host": 5, "client": 4, "server": 2}
                 )
                 for role, count in expected_counts.items():
                     paths = list(Path(temporary).glob(f"runs/*/{role}/*.csv"))

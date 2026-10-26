@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import sys
 import tempfile
 import tomllib
 import unittest
@@ -120,7 +121,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             result = await connection.run(
                 Exec(
                     argv=(
-                        "/usr/sbin/python3",
+                        sys.executable,
                         "-c",
                         "import os,sys;print(repr(sys.argv[1:]));print(os.environ['VDK_TEST'])",
                         "",
@@ -144,7 +145,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_large_stderr_drain(self):
         async with Host().connect() as conn:
             result = await conn.run(
-                Exec(argv=("/usr/sbin/python3", "-c", "import sys;sys.stderr.write('x'*200000)"))
+                Exec(argv=(sys.executable, "-c", "import sys;sys.stderr.write('x'*200000)"))
             )
             self.assertEqual(len(result.stderr), 200000)
 
@@ -152,7 +153,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         async with Host().connect() as conn:
             with self.assertRaises(ExceptionGroup) as caught:
                 await conn.run(
-                    Exec(argv=("/usr/sbin/python3", "-c", "print('x'*10000)")),
+                    Exec(argv=(sys.executable, "-c", "print('x'*10000)")),
                     stdout=CaptureOutput(limit_bytes=100),
                 )
             self.assertIsInstance(caught.exception.exceptions[0], OutputLimitExceeded)
