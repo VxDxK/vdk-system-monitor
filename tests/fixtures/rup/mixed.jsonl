@@ -1,0 +1,6 @@
+{"schema": "rup.ping", "version": 3, "record": "metadata", "started_at_ms": 1000, "target": "127.0.0.1:5000", "address": "127.0.0.1", "protocol": "udp", "request_size_bytes": 12, "packet_size_bytes": 40, "interval_ms": 100, "adaptive": false}
+{"record": "reply", "timestamp_ms": 1100, "seq": 0, "rtt_ms": 1, "size_bytes": 12, "ttl": 64}
+{"record": "terminal_reply", "timestamp_ms": 1200, "seq": 1, "rtt_ms": 3, "size_bytes": 0, "ttl": null}
+{"record": "timeout", "timestamp_ms": 1300, "seq": 2}
+{"record": "reorder_or_loss", "timestamp_ms": 1400, "seq": 3}
+{"record": "summary", "timestamp_ms": 1500, "sent": 4, "received": 2, "loss_percent": 50, "rtt_min_ms": 1, "rtt_mean_ms": 2, "rtt_median_ms": 3, "rtt_max_ms": 3, "rtt_std_dev_ms": 1}

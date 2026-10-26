@@ -1,0 +1,22 @@
+# Builders are explicit: failure never switches to another toolchain.
+default = "x86_64-unknown-linux-gnu"
+tools = ["rfpoll", "pspider", "socket-stat", "rgen", "rup", "targetctl"]
+cross_version = "0.2.5"
+
+[targets.x86_64-unknown-linux-gnu]
+builder = "cargo"
+linkage = "dynamic"
+profiles = ["linux"]
+rustflags = []
+
+[targets.x86_64-unknown-linux-musl]
+builder = "cross"
+linkage = "static"
+profiles = ["linux", "android", "openharmony"]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[targets.aarch64-unknown-linux-musl]
+builder = "cross"
+linkage = "static"
+profiles = ["linux", "android", "openharmony"]
+rustflags = ["-C", "target-feature=+crt-static"]

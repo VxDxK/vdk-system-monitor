@@ -1,0 +1,45 @@
+# Python environments, bytecode, and tooling caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+
+# Coverage and package builds
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+coverage.json
+/build/
+/dist/
+*.egg-info/
+
+# Native builds and generated experiment output
+/binary-utils/target/
+/artifacts/
+/reports/
+/runs/
+
+# Local workspace, editor settings, and credentials
+/codex-task-tracking/
+/.agents/
+/.codex/
+/.aws/
+/.ssh/
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# OS and editor temporary files
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
