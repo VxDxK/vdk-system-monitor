@@ -50,7 +50,7 @@ test: test-rust test-python
 # Build and package all six release binaries and their manifest.
 [group("build")]
 build-artifacts:
-    uv run python scripts/build_artifacts.py --all
+    uv run python scripts/build_artifacts.py
 
 # Delete generated output, preserving .venv.
 [group("clean")]

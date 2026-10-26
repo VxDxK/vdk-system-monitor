@@ -236,6 +236,15 @@ Python tests use native binaries, so `test-python` builds and packages them firs
 Coverage includes terminal output and HTML, JSON, and XML reports under `reports/`.
 Aggregate targets run sequentially and stop on failure.
 
+GitHub Actions runs formatting and lint checks for both languages, Rust unit
+tests, and the full Python suite on pull requests and pushes to `master`.
+The workflow also supports manual runs from the Actions tab. CI uses Ubuntu
+x86-64, the Python version in `.python-version`, and the pinned Rust toolchain.
+It builds the default Linux GNU native artifacts with `just test-python`.
+Download the `python-coverage` artifact from a workflow
+run for HTML, JSON, and XML coverage reports, including reports produced by
+failed tests. No coverage threshold is enforced.
+
 To characterize processing memory and runtime with synthetic CPU/process logs:
 
 ```bash
