@@ -14,6 +14,11 @@ from vsm.processor.pid_stat import PidStatProcessor
 from vsm.processor.process_io import ProcessIoProcessor
 from vsm.processor.smaps import SmapsProcessor
 
+UTC_FALLBACK_WARNING = (
+    "UTC timeline unavailable; using elapsed seconds: controller clock mapping or "
+    "measurement time origin was not recorded."
+)
+
 
 class LifecycleTests(unittest.TestCase):
     def setUp(self):
@@ -90,7 +95,8 @@ class LifecycleTests(unittest.TestCase):
                 data = PidStatProcessor().process(self.log("pid_stat", records), params=Params())
                 self.assertEqual(len(data[0].frame), 2)
                 self.assertEqual(data[0].frame.time.tolist(), [0, 1])
-                self.assertEqual(data[0].warnings, ())
+                self.assertEqual(data[0].warnings, (UTC_FALLBACK_WARNING,))
+                self.assertNotIn("timestamp_ns", data[0].frame)
                 self.assertEqual(data[1].warnings, ())
 
     def test_io_rates_use_pinned_identity_even_without_preceding_stat(self):
@@ -103,7 +109,9 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(len(data.frame), 2)
         self.assertEqual(data.frame.start_ticks.tolist(), [99, 99])
         self.assertEqual(data.frame.iloc[1].read_bytes_per_second, 20)
-        self.assertEqual(data.warnings, ())
+        self.assertEqual(data.frame.time.tolist(), [0, 1])
+        self.assertEqual(data.warnings, (UTC_FALLBACK_WARNING,))
+        self.assertNotIn("timestamp_ns", data.frame)
 
     def test_smaps_series_and_chart_grouping_separate_reused_pid(self):
         records = [
@@ -116,9 +124,11 @@ class LifecycleTests(unittest.TestCase):
         (data,) = SmapsProcessor().process(self.log("smaps", records), params=Params())
         self.assertEqual(len(data.frame), 2)
         self.assertEqual(data.frame.Rss.tolist(), [10240, 20480])
+        self.assertEqual(data.frame.time.tolist(), [0, 2.5])
         self.assertEqual(data.frame.start_ticks.tolist(), [99, 200])
         self.assertTrue(all("start_ticks" in c.group_by for c in data.charts))
-        self.assertEqual(data.warnings, ())
+        self.assertEqual(data.warnings, (UTC_FALLBACK_WARNING,))
+        self.assertNotIn("timestamp_ns", data.frame)
 
     def test_thread_rate_baselines_include_parent_and_thread_generations(self):
         records = [

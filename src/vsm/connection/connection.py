@@ -4,6 +4,7 @@ from contextlib import AbstractAsyncContextManager
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
+from vsm.clock import ClockCalibration, ClockTracker, TargetClock
 from vsm.connection.process import Process
 from vsm.models import (
     Command,
@@ -18,6 +19,10 @@ from vsm.models import (
 
 
 class Connection(Protocol):
+    async def sample_clock(self) -> TargetClock: ...
+
+    async def calibrate_clock(self) -> ClockCalibration: ...
+
     @property
     def device_id(self) -> DeviceId: ...
 
@@ -71,6 +76,13 @@ class BaseConnection:
         self._tmp_dir = self.path(tmp_dir)
         self._processes: list[Process] = []
         self._retain_workspace = False
+        self._clock_tracker = ClockTracker(self)
+
+    async def sample_clock(self) -> TargetClock:
+        raise NotImplementedError
+
+    async def calibrate_clock(self) -> ClockCalibration:
+        return await self._clock_tracker.refresh()
 
     @property
     def device_id(self) -> DeviceId:

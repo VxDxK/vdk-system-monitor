@@ -22,6 +22,12 @@ benchmark = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(benchmark)
 
 
+UTC_FALLBACK_WARNING = (
+    "UTC timeline unavailable; using elapsed seconds: controller clock mapping or "
+    "measurement time origin was not recorded."
+)
+
+
 class ProcessingBenchmarkTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -60,7 +66,8 @@ class ProcessingBenchmarkTests(unittest.TestCase):
             self.assertEqual(data.frame.rss_bytes.tolist(), [8192] * 4)
             self.assertTrue(pd.isna(data.frame.busy_percent.iloc[0]))
             self.assertEqual(data.frame.busy_percent.iloc[1:].tolist(), [15, 15, 15])
-            self.assertEqual(data.warnings, ())
+            self.assertEqual(data.warnings, (UTC_FALLBACK_WARNING,))
+            self.assertNotIn("timestamp_ns", data.frame)
             self.assertTrue(data.charts)
             self.assertTrue(all("process_start_ticks" in c.group_by for c in data.charts))
             units = {c.name: c.unit for c in data.columns}

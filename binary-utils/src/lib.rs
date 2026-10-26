@@ -45,6 +45,18 @@ pub fn validate(interval: u64, duration: Option<u64>) -> Result<(), String> {
     }
     Ok(())
 }
+/// Linux system-wide monotonic clock, shared by collectors and targetctl.
+pub fn monotonic_ns() -> io::Result<u64> {
+    let mut value = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut value) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(value.tv_sec as u64 * 1_000_000_000 + value.tv_nsec as u64)
+}
+
 pub struct Writer {
     start: Instant,
     sequence: u64,
@@ -53,12 +65,15 @@ pub struct Writer {
 impl Writer {
     pub fn new(tool: &str) -> io::Result<Self> {
         setup_signals();
+        let before = monotonic_ns()?;
+        let start = Instant::now();
+        let after = monotonic_ns()?;
         let mut result = Self {
-            start: Instant::now(),
+            start,
             sequence: 0,
             out: io::BufWriter::new(io::stdout()),
         };
-        result.emit(json!({"type":"metadata", "schema":tool, "version":env!("CARGO_PKG_VERSION"), "wall_ns":wall_ns(), "os":std::env::consts::OS, "architecture":std::env::consts::ARCH, "kernel":fs::read_to_string("/proc/sys/kernel/osrelease").ok().map(|s|s.trim().to_owned()), "clock_ticks_per_second":unsafe {libc::sysconf(libc::_SC_CLK_TCK)}, "page_size_bytes":unsafe {libc::sysconf(libc::_SC_PAGESIZE)}, "boot_id":fs::read_to_string("/proc/sys/kernel/random/boot_id").ok().map(|s|s.trim().to_owned())}))?;
+        result.emit(json!({"type":"metadata", "schema":tool, "version":env!("CARGO_PKG_VERSION"), "wall_ns":wall_ns(), "monotonic_origin_ns":before + (after - before) / 2, "origin_uncertainty_ns":(after - before).div_ceil(2), "os":std::env::consts::OS, "architecture":std::env::consts::ARCH, "kernel":fs::read_to_string("/proc/sys/kernel/osrelease").ok().map(|s|s.trim().to_owned()), "clock_ticks_per_second":unsafe {libc::sysconf(libc::_SC_CLK_TCK)}, "page_size_bytes":unsafe {libc::sysconf(libc::_SC_PAGESIZE)}, "boot_id":fs::read_to_string("/proc/sys/kernel/random/boot_id").ok().map(|s|s.trim().to_owned())}))?;
         Ok(result)
     }
     pub fn elapsed_ns(&self) -> u128 {

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import overload
 
+from vsm.clock import ClockCalibration, TimeOrigin
+
 
 @dataclass(frozen=True)
 class DeviceId:
@@ -148,6 +150,8 @@ class LogMetadata:
     provider: str
     interval_seconds: float | None = None
     warnings: tuple[str, ...] = ()
+    clock: ClockCalibration | None = None
+    time_origin: TimeOrigin | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

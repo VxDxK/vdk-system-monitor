@@ -9,16 +9,15 @@ from vsm._cleanup import cleanup
 from vsm.action._collector import (
     await_ready,
     cancel_task,
+    finalize_capture,
     last_record,
-    log_ref,
     native_ready,
     watch_exit,
 )
 from vsm.action._duration import duration_arguments, validate_duration
-from vsm.action._launch_mode import LaunchScope, foreground_log
+from vsm.action._lifecycle import OwnedScope, completed_log
 from vsm.action.action import ActionContext
 from vsm.action.capture import Capture
-from vsm.action.launch_mode import LaunchMode
 from vsm.models import Exec, FileOutput, LogRef, Schema
 from vsm.util.network import Endpoint, TrafficProtocol, TrafficRole
 from vsm.util.records import TrafficRecord
@@ -26,7 +25,12 @@ from vsm.util.records import TrafficRecord
 
 @dataclass(frozen=True, kw_only=True)
 class TrafficGenerator:
-    """Generate or consume TCP/UDP traffic using native rgen."""
+    """Generate or consume TCP/UDP traffic using native rgen.
+
+    do() waits for completion and returns a finalized log. use() stops/finalizes
+    on exit; explicitly await capture.wait() inside the scope for natural
+    completion. Without a duration, do() waits until cancelled or the tool exits.
+    """
 
     address: Endpoint
     role: TrafficRole = TrafficRole.PRODUCER
@@ -39,17 +43,14 @@ class TrafficGenerator:
     #: Aggregate producer rate in bits/s across all workers; None is unlimited.
     rate_bps: int | None = None
 
-    #: FOREGROUND uses do(); background modes use a resource scope (default stop on exit).
-    mode: LaunchMode = LaunchMode.BACKGROUND_STOP
-
     def __post_init__(self) -> None:
         validate_duration(self.duration)
 
     def open(self, ctx: ActionContext) -> AbstractAsyncContextManager[Capture[TrafficRecord]]:
-        return LaunchScope(self.mode, TrafficGenerator._open(self, ctx))
+        return OwnedScope(TrafficGenerator._open(self, ctx))
 
     async def run(self, ctx: ActionContext) -> LogRef[TrafficRecord]:
-        return await foreground_log(self.mode, TrafficGenerator._open(self, ctx))
+        return await completed_log(TrafficGenerator._open(self, ctx))
 
     @asynccontextmanager
     async def _open(self, ctx: ActionContext) -> AsyncIterator[Capture[TrafficRecord]]:
@@ -95,12 +96,11 @@ class TrafficGenerator:
                     try:
                         await cancel_task(wait)
                     finally:
-                        c.finalize(
-                            log_ref(
-                                ctx,
-                                output,
-                                Schema[TrafficRecord](name="traffic_generator"),
-                                complete=complete,
-                                interval_ms=None,
-                            )
+                        await finalize_capture(
+                            c,
+                            ctx,
+                            output,
+                            Schema[TrafficRecord](name="traffic_generator"),
+                            complete=complete,
+                            interval_ms=None,
                         )

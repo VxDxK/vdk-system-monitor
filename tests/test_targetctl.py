@@ -33,6 +33,20 @@ from vsm.runtime import Run
 
 
 class NativeTargetctlTests(unittest.TestCase):
+    def test_clock_uses_shared_monotonic_clock_and_boot(self):
+        before = time.monotonic_ns()
+        event = self.request("clock", {})[-1]
+        after = time.monotonic_ns()
+        value = event["result"]
+        self.assertEqual(event["event"], "result")
+        self.assertLessEqual(before, value["monotonic_ns"])
+        self.assertLessEqual(value["monotonic_ns"], after)
+        self.assertEqual(
+            value["boot_id"], Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        )
+        self.assertGreater(value["realtime_ns"], 0)
+        self.assertGreaterEqual(value["uncertainty_ns"], 0)
+
     def setUp(self):
         self.tool = native_artifact("targetctl")
         self.temp = tempfile.TemporaryDirectory()

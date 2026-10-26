@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import time
 from dataclasses import replace
+from datetime import timedelta, timezone
 from pathlib import Path
 
 from vsm.action.cpu_freq import CpuFreq
@@ -21,7 +22,7 @@ from vsm.action.proc_stat import ProcStat
 from vsm.action.rup import Rup
 from vsm.action.smaps import Smaps
 from vsm.connection.host import Host
-from vsm.output.charts import export_charts
+from vsm.output.charts import ExportOptions, export_charts
 from vsm.processing import Params, process
 from vsm.processor.cpu_freq import CpuFreqProcessor
 from vsm.processor.fans import FansProcessor
@@ -97,7 +98,12 @@ async def main(port: int = 5000) -> None:
                     output / role / f"{index:02d}-{item_index:02d}-{data.data_label}.csv"
                 )
                 results.append(labeled)
-        export_charts(results, output / "charts.html", title="Local rup client/server metrics")
+        export_charts(
+            results,
+            output / "charts.html",
+            title="Local rup client/server metrics",
+            options=ExportOptions(timezone=timezone(timedelta(hours=3))),
+        )
     print(output)
 
 

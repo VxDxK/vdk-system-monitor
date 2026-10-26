@@ -5,6 +5,7 @@ from typing import cast
 
 from vsm.chart.box import Box
 from vsm.chart.line import lines
+from vsm.clock import TimeOrigin
 from vsm.models import LogRef
 from vsm.processing import Column, Dataset, Params, dataset
 from vsm.util.records import LatencyRecord
@@ -27,6 +28,15 @@ class RupProcessor:
             source.path, complete=source.complete, allow_partial=params.allow_partial
         )
         start = cast(int, records[0]["started_at_ms"])
+        source = replace(
+            source,
+            metadata=replace(
+                source.metadata,
+                time_origin=TimeOrigin(
+                    domain="target_realtime", value_ns=start * 1_000_000, uncertainty_ns=1_000_000
+                ),
+            ),
+        )
         rows = [
             {
                 "time": (cast(int, record["timestamp_ms"]) - start) / 1000,

@@ -20,6 +20,7 @@ from vsm.processor.net_udp import NetUdpProcessor
 from vsm.processor.pid_stat import PidStatProcessor
 from vsm.processor.proc_stat import CpuProcessor
 from vsm.processor.temperature import TemperatureProcessor
+from vsm.processor.traffic_generator import TrafficGeneratorProcessor
 from vsm.processor.wifi_conn_info import WifiConnInfoProcessor
 from vsm.util.labels import label_frame
 
@@ -142,6 +143,67 @@ class ReportTests(unittest.TestCase):
         )
         self.assertEqual(result[1].frame.cpu_binding.tolist(), [3, 3])
         self.assertEqual(result[1].frame.busy_percent.iloc[1], 100)
+        for chart in result[1].charts[:3]:
+            self.assertEqual(chart.y_range, (0, 100))
+            self.assertEqual(tuple(chart.as_plotly(result[1].frame).layout.yaxis.range), (0, 100))
+        binding = result[1].charts[3]
+        self.assertEqual(binding.label, "Thread last CPU")
+        self.assertTrue(binding.integer_y)
+        self.assertTrue(binding.step)
+        process_cpu = next(chart for chart in result[0].charts if chart.label == "Process CPU")
+        self.assertIsNone(process_cpu.y_range)
+        frame = result[0].frame.copy()
+        frame.loc[frame.index[-1], "user_percent"] = 250
+        plot = process_cpu.as_plotly(frame)
+        self.assertEqual(plot.data[0].y[-1], 250)
+        self.assertIsNone(plot.layout.yaxis.range)
+
+    def test_frequency_and_interface_display_units(self):
+        frequency = self.process_files(
+            CpuFreqProcessor(),
+            [self.fixture.file("/sys/cpu/cpufreq/scaling_cur_freq", "2000000", 0)],
+        )
+        self.assertEqual(frequency.frame.frequency_hz.iloc[0], 2_000_000_000)
+        chart = frequency.charts[0]
+        self.assertEqual(chart.ylabel, "GHz")
+        self.assertEqual(chart.as_plotly(frequency.frame).data[0].y[0], 2)
+        network = self.process_files(
+            NetProcessor(),
+            [
+                self.fixture.file(
+                    "/proc/net/dev",
+                    f"eth0: {value} 2 0 0 0 0 0 0 {value} 3 0 0 0 0 0 0\n",
+                    t,
+                )
+                for t, value in ((0, 0), (1_000_000_000, 1_048_576))
+            ],
+        )
+        self.assertFalse(any(isinstance(chart, Table) for chart in network.charts))
+        self.assertIn("rx_bytes", network.frame)
+        throughput = network.charts[0]
+        self.assertEqual(throughput.ylabel, "MiB/s")
+        self.assertEqual(throughput.as_plotly(network.frame).data[0].y[1], 1)
+
+    def test_rgen_bits_display_as_mebibytes_per_second(self):
+        source = self.fixture.log(
+            "traffic_generator",
+            [
+                {
+                    "type": "traffic",
+                    "time_ns": 0,
+                    "bits_per_second": 8_388_608,
+                    "operations_per_second": 10,
+                }
+            ],
+        )
+        data = TrafficGeneratorProcessor().process(source, params=Params())[0]
+        self.assertEqual(data.frame.bits_per_second.iloc[0], 8_388_608)
+        chart = data.charts[0]
+        self.assertEqual(chart.ylabel, "MiB/s")
+        self.assertEqual(chart.as_plotly(data.frame).data[0].y[0], 1)
+        static = chart.as_matplotlib(data.frame)
+        self.assertEqual(static.axes[0].lines[0].get_ydata()[0], 1)
+        static.clear()
 
     def test_battery_units_sparse_sources_and_thermal_names(self):
         records = [
@@ -181,8 +243,8 @@ class ReportTests(unittest.TestCase):
             for t in (0, 1)
         ]
         data = self.process_files(NetProcessor(), records)
-        self.assertEqual(len(data.charts), 4)
-        self.assertIsInstance(data.charts[-1], Table)
+        self.assertEqual(len(data.charts), 3)
+        self.assertFalse(any(isinstance(chart, Table) for chart in data.charts))
         self.assertEqual(data.frame.rx_drops_per_second.iloc[1], 1)
         snmp = self.process_files(
             NetSnmpProcessor(),

@@ -57,6 +57,8 @@ class NativeTests(unittest.TestCase):
             )
             events = [json.loads(line) for line in result.stdout.splitlines()]
             self.assertEqual(events[0]["schema"], "rfpoll")
+            self.assertGreater(events[0]["monotonic_origin_ns"], 0)
+            self.assertGreaterEqual(events[0]["origin_uncertainty_ns"], 0)
             self.assertEqual(events[-1]["type"], "end")
             self.assertTrue(any(e["type"] == "ready" for e in events))
             files = [e for e in events if e["type"] == "file"]
@@ -191,7 +193,16 @@ class NativeTests(unittest.TestCase):
                     source = load_native(path, schema=Schema(name=name))
                     results = processor.process(source, params=Params())
                     self.assertFalse(results[0].frame.empty)
-                    self.assertTrue(all(not d.warnings for d in results))
+                    self.assertTrue(
+                        all(
+                            all(
+                                warning.startswith("UTC timeline unavailable;")
+                                for warning in d.warnings
+                            )
+                            for d in results
+                        )
+                    )
+                    self.assertTrue(any(d.warnings for d in results))
                     self.assertLess(results[0].frame.time.max(), endings[0]["time_ns"] / 1e9)
                 finally:
                     if workload.poll() is None:

@@ -112,8 +112,6 @@ class NetProcessor(NativeFileProcessor[NetRecord]):
     def charts(self, frame: pd.DataFrame) -> tuple[Chart, ...]:
         from dataclasses import replace
 
-        from vsm.chart.table import Table
-
         return tuple(
             replace(chart, where=(("interface", str(interface)),))
             for interface in frame.get("interface", pd.Series(dtype=str)).drop_duplicates()
@@ -122,7 +120,8 @@ class NetProcessor(NativeFileProcessor[NetRecord]):
                     frame,
                     f"Interface {interface} · throughput",
                     ("rx_bytes_per_second", "tx_bytes_per_second"),
-                    ylabel="B/s",
+                    ylabel="MiB/s",
+                    y_scale=1 / 1024**2,
                     group_by=("interface",)
                     + (("observation_epoch",) if "observation_epoch" in frame else ()),
                 ),
@@ -147,20 +146,4 @@ class NetProcessor(NativeFileProcessor[NetRecord]):
                     + (("observation_epoch",) if "observation_epoch" in frame else ()),
                 ),
             )
-        ) + (
-            Table(
-                label="Raw interface counters",
-                columns=tuple(
-                    c
-                    for c in (
-                        "time",
-                        "interface",
-                        "rx_bytes",
-                        "tx_bytes",
-                        "rx_packets",
-                        "tx_packets",
-                    )
-                    if c in frame
-                ),
-            ),
         )

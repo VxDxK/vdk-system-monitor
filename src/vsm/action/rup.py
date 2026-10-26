@@ -9,12 +9,11 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from vsm._cleanup import cleanup
-from vsm.action._collector import await_ready, cancel_task, log_ref, watch_exit
+from vsm.action._collector import await_ready, cancel_task, finalize_capture, watch_exit
 from vsm.action._interval import validate_interval
-from vsm.action._launch_mode import LaunchScope, foreground_log
+from vsm.action._lifecycle import OwnedScope, completed_log
 from vsm.action.action import ActionContext
 from vsm.action.capture import Capture
-from vsm.action.launch_mode import LaunchMode
 from vsm.action.rup_capture import marker_ready, summary_complete
 from vsm.models import CleanupUnknown, EnvVar, Exec, FileOutput, LogRef, MonitorError, Schema
 from vsm.util.network import BindEndpoint, Endpoint, ProbeProtocol, ProbeRole
@@ -29,6 +28,8 @@ class Rup:
     logs wrapping rup.ping/3; server service logs are not measurements. Terminal
     responses count as received. ICMP requires ping-socket permissions. Server
     role rejects client-only options; capture.log is available after scope exit.
+    do() waits for completion and finalization. use() stops/finalizes on exit;
+    explicitly await capture.wait() inside the scope for natural completion.
     """
 
     address: Endpoint
@@ -47,8 +48,6 @@ class Rup:
     request_size: int | None = None
     response_size: int | None = None
     traffic_class: int | None = None
-    #: FOREGROUND uses do(); background modes use a resource scope (default stop on exit).
-    mode: LaunchMode = LaunchMode.BACKGROUND_STOP
 
     def __post_init__(self) -> None:
         if not isinstance(self.role, ProbeRole) or not isinstance(self.protocol, ProbeProtocol):
@@ -105,10 +104,10 @@ class Rup:
         return (*args, str(self.address))
 
     def open(self, ctx: ActionContext) -> AbstractAsyncContextManager[Capture[LatencyRecord]]:
-        return LaunchScope(self.mode, Rup._open(self, ctx))
+        return OwnedScope(Rup._open(self, ctx))
 
     async def run(self, ctx: ActionContext) -> LogRef[LatencyRecord]:
-        return await foreground_log(self.mode, Rup._open(self, ctx))
+        return await completed_log(Rup._open(self, ctx))
 
     @asynccontextmanager
     async def _open(self, ctx: ActionContext) -> AsyncIterator[Capture[LatencyRecord]]:
@@ -134,11 +133,6 @@ class Rup:
             capture: Capture[LatencyRecord] = Capture()
             stopping = asyncio.Event()
             grace = max(5, self.timeout + 1)
-            allow_exit = (
-                self.role is ProbeRole.CLIENT
-                or self.duration is not None
-                or self.mode is not LaunchMode.BACKGROUND_STOP
-            )
             async with ctx.connection.launch(
                 command, stdout=FileOutput(output), stderr=FileOutput(errors)
             ) as proc:
@@ -147,8 +141,8 @@ class Rup:
                 timer: asyncio.Task[None] | None = None
                 complete = False
                 try:
-                    await await_ready(marker_ready(ctx, marker), wait, allow_exit=allow_exit)
-                    ctx.supervise(watch_exit(wait, stopping, allow_exit=allow_exit))
+                    await await_ready(marker_ready(ctx, marker), wait, allow_exit=True)
+                    ctx.supervise(watch_exit(wait, stopping, allow_exit=True))
                     duration = self.duration
                     if duration is not None:
 
@@ -180,15 +174,14 @@ class Rup:
                         try:
                             await cancel_task(wait)
                         finally:
-                            capture.finalize(
-                                log_ref(
-                                    ctx,
-                                    output,
-                                    Schema[LatencyRecord](name="rup"),
-                                    complete=complete,
-                                    interval_ms=self.interval if not self.adaptive else None,
-                                    provider="binary-utils rup 0.1.0; rup.ping/3",
-                                )
+                            await finalize_capture(
+                                capture,
+                                ctx,
+                                output,
+                                Schema[LatencyRecord](name="rup"),
+                                complete=complete,
+                                interval_ms=self.interval if not self.adaptive else None,
+                                provider="binary-utils rup 0.1.0; rup.ping/3",
                             )
         except CleanupUnknown:
             remove_control = False

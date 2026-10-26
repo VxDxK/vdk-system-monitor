@@ -4,6 +4,7 @@ import base64
 import re
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -52,6 +53,58 @@ class ChartTests(unittest.TestCase):
         self.assertTrue(pd.isna(static.axes[0].lines[0].get_ydata()[1]))
         FigureCanvasAgg(static).draw()
         static.clear()
+
+    def test_display_scaling_preserves_data_gaps_and_csv_options(self):
+        frame = pd.DataFrame({"time": [0, 1, 2], "bytes": [1048576, None, 2097152]})
+        original = frame.copy(deep=True)
+        chart = Line(label="Memory", y=("bytes",), ylabel="MiB", y_scale=1 / 1024**2)
+        plot = chart.as_plotly(frame)
+        self.assertEqual(plot.data[0].y[0], 1)
+        self.assertTrue(pd.isna(plot.data[0].y[1]))
+        self.assertEqual(plot.data[0].y[2], 2)
+        self.assertIn("MiB", plot.data[0].hovertemplate)
+        figure = chart.as_matplotlib(frame)
+        self.assertEqual(figure.axes[0].get_ylabel(), "MiB")
+        self.assertEqual(figure.axes[0].lines[0].get_ydata()[2], 2)
+        self.assertTrue(pd.isna(figure.axes[0].lines[0].get_ydata()[1]))
+        figure.clear()
+        pd.testing.assert_frame_equal(frame, original)
+        data = Dataset(frame=frame, group_label="Memory", data_label="memory", charts=(chart,))
+        path = self.root / "memory.csv"
+        data.to_csv(path)
+        restored = Dataset.from_csv(path)
+        self.assertEqual(restored.charts, data.charts)
+        pd.testing.assert_frame_equal(restored.frame, original)
+
+    def test_integer_step_axis_in_both_renderers_and_csv(self):
+        frame = pd.DataFrame({"time": [0, 1, 2], "cpu": [1, 3, 2]})
+        chart = Line(label="Last CPU", y=("cpu",), integer_y=True, step=True)
+        plot = chart.as_plotly(frame)
+        self.assertEqual(plot.layout.yaxis.dtick, 1)
+        self.assertEqual(plot.layout.yaxis.tickformat, "d")
+        self.assertEqual(plot.data[0].line.shape, "hv")
+        figure = chart.as_matplotlib(frame)
+        FigureCanvasAgg(figure).draw()
+        self.assertTrue(all(tick == int(tick) for tick in figure.axes[0].get_yticks()))
+        self.assertEqual(figure.axes[0].lines[0].get_drawstyle(), "steps-post")
+        figure.clear()
+        constant = frame.assign(cpu=1)
+        figure = chart.as_matplotlib(constant)
+        FigureCanvasAgg(figure).draw()
+        self.assertTrue(all(tick == int(tick) for tick in figure.axes[0].get_yticks()))
+        figure.clear()
+        data = Dataset(frame=frame, group_label="CPU", data_label="cpu", charts=(chart,))
+        data.to_csv(self.root / "cpu.csv")
+        self.assertEqual(Dataset.from_csv(self.root / "cpu.csv").charts, (chart,))
+
+    def test_singleton_grid_spans_columns_with_separate_additional_group(self):
+        data = replace(self.data, charts=(self.chart, replace(self.chart, additional=True)))
+        path = self.root / "single.html"
+        export_charts((data,), path, options=ExportOptions(columns=3))
+        html = path.read_text()
+        self.assertEqual(html.count("<div class='charts'>"), 2)
+        self.assertIn(".charts>.chart:only-child{grid-column:1 / -1}", html)
+        self.assertIn(".charts{grid-template-columns:1fr}", html)
 
     def test_static_and_plotly_reports_in_both_layouts(self):
         for backend in Backend:
@@ -155,7 +208,7 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(units["HugePages_Total"], "count")
         self.assertEqual(units["used_percent"], "%")
         self.assertEqual(data.frame.iloc[0]["MemTotal"], 102400)
-        self.assertEqual({chart.ylabel for chart in data.charts}, {"B", "count", "%"})
+        self.assertEqual({chart.ylabel for chart in data.charts}, {"MiB", "count", "%"})
         log = fixtures.log(
             "proc_stat",
             [

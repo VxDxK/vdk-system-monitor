@@ -15,6 +15,7 @@ import asyncssh
 
 from vsm._cleanup import cleanup
 from vsm.binary import BinaryProvider
+from vsm.clock import TargetClock
 from vsm.connection._streams import Sink
 from vsm.connection._targetctl_protocol import (
     MAX_ITEMS,
@@ -112,7 +113,7 @@ class TargetctlClient:
                         items.append(event["result"])
                     elif event["event"] == "result":
                         terminal = True
-                        if operation == "capabilities":
+                        if operation in ("capabilities", "clock"):
                             items.append(event["result"])
                     else:
                         raise TargetctlProtocolError("unexpected request event")
@@ -142,6 +143,23 @@ class TargetctlClient:
             _identity(self.connection, value)
             for value in await self.request("discover", {"pattern": pattern})
         )
+
+    async def sample_clock(self) -> TargetClock:
+        values = await self.request("clock", {})
+        if len(values) != 1 or not isinstance(values[0], dict):
+            raise TargetctlProtocolError("invalid clock response")
+        value = values[0]
+        if (
+            set(value) != {"boot_id", "monotonic_ns", "realtime_ns", "uncertainty_ns"}
+            or not isinstance(value["boot_id"], str)
+            or not value["boot_id"]
+            or any(
+                type(value[key]) is not int or value[key] < 0
+                for key in ("monotonic_ns", "realtime_ns", "uncertainty_ns")
+            )
+        ):
+            raise TargetctlProtocolError("invalid clock response")
+        return TargetClock(**value)
 
     async def validate(self, processes: ProcessSet) -> None:
         for process in processes:

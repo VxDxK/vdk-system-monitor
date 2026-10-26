@@ -10,8 +10,8 @@ from vsm._cleanup import cleanup
 from vsm.action._collector import (
     await_ready,
     cancel_task,
+    finalize_capture,
     last_record,
-    log_ref,
     native_ready,
     watch_exit,
 )
@@ -91,12 +91,11 @@ class PollFiles[T: FileRecord = FileRecord]:
                     try:
                         await cancel_task(wait)
                     finally:
-                        result.finalize(
-                            log_ref(
-                                ctx,
-                                output,
-                                Schema[T](name=self.schema_name),
-                                complete=complete,
-                                interval_ms=self.interval,
-                            )
+                        await finalize_capture(
+                            result,
+                            ctx,
+                            output,
+                            Schema[T](name=self.schema_name),
+                            complete=complete,
+                            interval_ms=self.interval,
                         )

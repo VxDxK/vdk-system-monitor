@@ -88,16 +88,24 @@ partial startup or cancellation. Claims protect all equal-device connections wit
 external programs and independently created runs require coordination outside
 this in-memory mechanism.
 
-Built-in launch-like actions additionally expose `LaunchMode`. Foreground
-`do()` waits for execution and finalization, returning a log or completed command.
-Background `use()` establishes readiness and yields the owned handle; its mode
-selects wait-for-completion or stop-on-normal-exit. Exceptions/cancellation stop
-in every mode. The runtime asks the built-in launch scope to await normal
-completion before shielding resource exit, so cancelling a background-wait exit
-still initiates stop/reap. Underlying cleanup remains cancellation resistant;
-other and user-defined resources retain their shielded exit behavior. Resource
-claims also apply to foreground actions such as Ftrace. Modes do not alter native
-formats, transport supervision, or the ownership of a standalone `wait()` call.
+Built-in launch-like actions support both entrypoints without a launch mode.
+`do()` waits for natural completion and finalization, returning a log or completed
+command. `use()` establishes readiness and yields the owned handle; scope exit
+stops/reaps remaining work and finalizes the capture. Natural completion inside
+a scope requires an explicit `await capture.wait()` or `await process.wait()`
+when the caller wants to await it before exit. Successful completion is also
+allowed before the caller starts waiting, including during startup when the
+required readiness evidence is present; nonzero exits remain supervised failures.
+
+Natural waits run as ordinary cancellable action/body work, outside cleanup
+shielding. Resource exit remains cancellation resistant, including for direct
+`action.open(ctx)` callers. The runtime uses the ordinary resource lifecycle
+without a built-in launch-scope special case. Claims also apply to `do()` actions
+such as Ftrace. Cancelling an individual waiter does not stop its workload;
+exiting its owning scope does. `run.spawn(device.do(action))` supplies supervised
+concurrent execution, and run exit joins or cancels these tasks under the existing
+structured-concurrency rules. Open-ended actions need a completion condition or
+caller cancellation when invoked through `do()`.
 
 Process discovery returns `ProcessSet`, an immutable `Sequence[ProcessIdentity]`
 with device, boot, PID, and start-tick identity per element. Its positional
@@ -163,6 +171,14 @@ joins the worker on cancellation. This avoids blocking I/O on the event loop;
 it does not promise CPU parallelism or hard cancellation of pandas. Large
 analyses may require a future process-worker API. Datasets contain dataframes,
 labels, column/unit descriptors, warnings, and declarative chart descriptions.
+`LogMetadata.clock` carries typed controller UTC/target monotonic calibration
+samples and uncertainty; `time_origin` identifies the measurement clock origin.
+Host/SSH connections own bounded calibration workers and expose typed
+`sample_clock()`/`calibrate_clock()` methods. Capture finalization checkpoints
+calibration and writes raw-log metadata companions. Processing adds integer UTC
+timestamps without changing elapsed-rate arithmetic. Missing mappings retain
+elapsed axes with warnings; see [chart reports](chart-reports.md#controller-utc-timelines).
+
 Rendering is separate: `vsm.chart` provides line/box/bar/table descriptions and a
 custom chart protocol with Plotly and Matplotlib figure methods. Each processor
 chooses charts and units explicitly. `vsm.output.charts` generates collapsible or

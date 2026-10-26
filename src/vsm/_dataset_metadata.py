@@ -13,12 +13,17 @@ from vsm.chart.bar import Bar
 from vsm.chart.box import Box
 from vsm.chart.line import Line
 from vsm.chart.table import Table
+from vsm.clock import ClockCalibration, ClockSample, TargetClock, TimeOrigin
 from vsm.models import ActionId, DeviceId, LogMetadata, TargetInfo
 from vsm.processing import Column, Provenance
 
 _CLASSES = {
     cls.__name__: cls
     for cls in (
+        ClockCalibration,
+        ClockSample,
+        TargetClock,
+        TimeOrigin,
         Column,
         Provenance,
         ActionId,

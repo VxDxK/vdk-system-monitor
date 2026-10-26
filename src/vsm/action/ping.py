@@ -10,15 +10,14 @@ from vsm._cleanup import cleanup
 from vsm.action._collector import (
     await_ready,
     cancel_task,
-    log_ref,
+    finalize_capture,
     output_ready,
     watch_exit,
 )
-from vsm.action._launch_mode import LaunchScope, foreground_log
+from vsm.action._lifecycle import OwnedScope, completed_log
 from vsm.action.action import ActionContext
 from vsm.action.capture import Capture
 from vsm.action.command_collector import CommandCollector
-from vsm.action.launch_mode import LaunchMode
 from vsm.models import Exec, FileOutput, LogRef, Schema
 from vsm.util.records import TextRecord
 
@@ -32,10 +31,10 @@ class Ping(CommandCollector):
     schema_name: ClassVar[str] = "ping"
 
     def open(self, ctx: ActionContext) -> AbstractAsyncContextManager[Capture[TextRecord]]:
-        return LaunchScope(self.mode, Ping._open(self, ctx))
+        return OwnedScope(Ping._open(self, ctx))
 
     async def run(self, ctx: ActionContext) -> LogRef[TextRecord]:
-        return await foreground_log(self.mode, Ping._open(self, ctx))
+        return await completed_log(Ping._open(self, ctx))
 
     @asynccontextmanager
     async def _open(self, ctx: ActionContext) -> AsyncIterator[Capture[TextRecord]]:
@@ -55,13 +54,9 @@ class Ping(CommandCollector):
                 await await_ready(
                     output_ready(output),
                     wait,
-                    allow_exit=self.mode is not LaunchMode.BACKGROUND_STOP,
+                    allow_exit=True,
                 )
-                ctx.supervise(
-                    watch_exit(
-                        wait, stopping, allow_exit=self.mode is not LaunchMode.BACKGROUND_STOP
-                    )
-                )
+                ctx.supervise(watch_exit(wait, stopping, allow_exit=True))
                 yield c
             finally:
                 stopping.set()
@@ -73,12 +68,11 @@ class Ping(CommandCollector):
                     try:
                         await cancel_task(wait)
                     finally:
-                        c.finalize(
-                            log_ref(
-                                ctx,
-                                output,
-                                Schema[TextRecord](name="ping"),
-                                complete=complete,
-                                interval_ms=None,
-                            )
+                        await finalize_capture(
+                            c,
+                            ctx,
+                            output,
+                            Schema[TextRecord](name="ping"),
+                            complete=complete,
+                            interval_ms=None,
                         )

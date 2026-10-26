@@ -10,11 +10,11 @@ from vsm._cleanup import cleanup
 from vsm.action._collector import (
     await_ready,
     cancel_task,
-    log_ref,
+    finalize_capture,
     output_ready,
     watch_exit,
 )
-from vsm.action._launch_mode import LaunchScope, foreground_log
+from vsm.action._lifecycle import OwnedScope, completed_log
 from vsm.action.action import ActionContext
 from vsm.action.capture import Capture
 from vsm.action.command_collector import CommandCollector
@@ -31,10 +31,10 @@ class Fio(CommandCollector):
     schema_name: ClassVar[str] = "fio"
 
     def open(self, ctx: ActionContext) -> AbstractAsyncContextManager[Capture[TextRecord]]:
-        return LaunchScope(self.mode, Fio._open(self, ctx))
+        return OwnedScope(Fio._open(self, ctx))
 
     async def run(self, ctx: ActionContext) -> LogRef[TextRecord]:
-        return await foreground_log(self.mode, Fio._open(self, ctx))
+        return await completed_log(Fio._open(self, ctx))
 
     @asynccontextmanager
     async def _open(self, ctx: ActionContext) -> AsyncIterator[Capture[TextRecord]]:
@@ -66,12 +66,11 @@ class Fio(CommandCollector):
                     try:
                         await cancel_task(wait)
                     finally:
-                        c.finalize(
-                            log_ref(
-                                ctx,
-                                output,
-                                Schema[TextRecord](name="fio"),
-                                complete=complete,
-                                interval_ms=None,
-                            )
+                        await finalize_capture(
+                            c,
+                            ctx,
+                            output,
+                            Schema[TextRecord](name="fio"),
+                            complete=complete,
+                            interval_ms=None,
                         )

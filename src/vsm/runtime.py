@@ -14,7 +14,6 @@ from types import TracebackType
 from typing import Literal, Self, cast
 
 from vsm._cleanup import cleanup
-from vsm.action._launch_mode import LaunchScope
 from vsm.action.action import Action, ClaimedResource, ResourceAction
 from vsm.binary import BinaryProvider, deploy
 from vsm.connection.connection import Connection, ConnectionBackend
@@ -155,8 +154,6 @@ class Device:
                 value = await manager.__aenter__()
                 try:
                     yield value
-                    if isinstance(manager, LaunchScope):
-                        await manager.wait_before_exit()
                 except BaseException as primary:
                     try:
                         await cleanup(

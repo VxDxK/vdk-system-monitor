@@ -16,6 +16,7 @@ from pathlib import Path
 
 from vsm._cleanup import cleanup
 from vsm.binary import BinaryProvider
+from vsm.clock import TargetClock
 from vsm.connection._streams import Sink
 from vsm.connection._targetctl_transport import HostChannel, host_channel
 from vsm.connection.connection import BaseConnection, Connection
@@ -141,6 +142,9 @@ class HostConnection(BaseConnection):
 
     async def validate_processes(self, processes: ProcessSet) -> None:
         await self._targetctl.validate(processes)
+
+    async def sample_clock(self) -> TargetClock:
+        return await self._targetctl.sample_clock()
 
     def launch(
         self, command: Command, *, stdout: Output | None = None, stderr: Output | None = None
@@ -295,7 +299,8 @@ class Host:
             targetctl=self.targetctl,
         )
         try:
-            yield conn
+            async with conn._clock_tracker.session():
+                yield conn
         finally:
             try:
                 await cleanup(conn._close_processes())

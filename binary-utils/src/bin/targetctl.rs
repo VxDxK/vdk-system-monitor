@@ -57,8 +57,17 @@ fn run() -> io::Result<()> {
                     let started = protocol::clock_ns();
                     let result = match req.operation.as_str() {
                         "capabilities" => Ok(
-                            json!({"operations":["capabilities","discover","validate","launch","identity","stop","renew","release"],"procfs":std::path::Path::new("/proc/self/stat").exists(),"pidfd":supervisor::pidfd_available()}),
+                            json!({"operations":["clock","capabilities","discover","validate","launch","identity","stop","renew","release"],"procfs":std::path::Path::new("/proc/self/stat").exists(),"pidfd":supervisor::pidfd_available()}),
                         ),
+                        "clock" => (|| {
+                            let before = binary_utils::monotonic_ns()?;
+                            let realtime_ns = binary_utils::wall_ns();
+                            let after = binary_utils::monotonic_ns()?;
+                            Ok(json!({"boot_id":protocol::boot()?,
+                                "monotonic_ns":before + (after - before) / 2,
+                                "realtime_ns":realtime_ns,
+                                "uncertainty_ns":(after - before).div_ceil(2)}))
+                        })(),
                         "discover" => procfs::discover(&req.params).and_then(|items| {
                             for item in items {
                                 serde_json::to_writer(

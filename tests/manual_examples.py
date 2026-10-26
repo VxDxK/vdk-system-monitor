@@ -4,6 +4,7 @@ import asyncio
 import importlib.util
 import tempfile
 from contextlib import asynccontextmanager
+from datetime import timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -29,7 +30,15 @@ def load_example(name):
 class ManualExampleChecks:
     remote = False
 
-    async def exercise(self, *, failure=None, protocol=TrafficProtocol.TCP, address="192.0.2.10"):
+    async def exercise(
+        self,
+        *,
+        failure=None,
+        protocol=TrafficProtocol.TCP,
+        address="192.0.2.10",
+        password="secret",
+        client_keys=(),
+    ):
         example, remote = self.example, self.remote
         events, active, actions = [], [], {}
         selections = {
@@ -126,7 +135,10 @@ class ManualExampleChecks:
                 if isinstance(backend, Host):
                     return Device("client" if remote else "host")
                 assert remote and backend == SSH(
-                    destination="server", username="alice", password="secret"
+                    destination="server",
+                    username="alice",
+                    password=password,
+                    client_keys=client_keys,
                 )
                 return Device("server")
 
@@ -171,10 +183,11 @@ class ManualExampleChecks:
             patch.object(example, "export_charts") as charts,
             patch("sys.stdout"),
         ):
-            args = ("alice", "server", "secret") if remote else ()
+            args = ("alice", "server", password) if remote else ()
             kwargs = (
                 {
                     "protocol": protocol,
+                    "client_keys": client_keys,
                     "address": address,
                     "workers": 2,
                     "payload_bytes": 1200,
@@ -201,6 +214,9 @@ class ManualExampleChecks:
             else:
                 await example.main(*args, **kwargs)
                 charts.assert_called_once()
+                self.assertEqual(
+                    charts.call_args.kwargs["options"].timezone, timezone(timedelta(hours=3))
+                )
                 datasets, report = charts.call_args.args
                 self.assertEqual(report.name, "charts.html")
                 self.assertEqual(len(datasets), 14 if remote else 11)

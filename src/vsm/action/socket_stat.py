@@ -9,8 +9,8 @@ from vsm._cleanup import cleanup
 from vsm.action._collector import (
     await_ready,
     cancel_task,
+    finalize_capture,
     last_record,
-    log_ref,
     native_ready,
     watch_exit,
 )
@@ -73,12 +73,11 @@ class SocketStat:
                     try:
                         await cancel_task(wait)
                     finally:
-                        c.finalize(
-                            log_ref(
-                                ctx,
-                                output,
-                                Schema[SocketRecord](name="socket_stat"),
-                                complete=complete,
-                                interval_ms=self.interval,
-                            )
+                        await finalize_capture(
+                            c,
+                            ctx,
+                            output,
+                            Schema[SocketRecord](name="socket_stat"),
+                            complete=complete,
+                            interval_ms=self.interval,
                         )

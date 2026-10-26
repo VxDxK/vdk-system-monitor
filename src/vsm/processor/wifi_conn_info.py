@@ -123,6 +123,8 @@ class WifiConnInfoProcessor(TextProcessor):
             value = dataset(
                 "wifi_parameters_" + str(station) + (f"_observation_{epoch}" if epoch else ""),
                 wide_rows,
+                units={"time": "s"},
+                source=source,
             )
             frame = value.frame
             charts: list[Chart] = [Table(label=f"All parameters over time · {station}")]
