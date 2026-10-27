@@ -47,7 +47,8 @@ class TrafficGeneratorProcessor:
                         pd.DataFrame(rows),
                         "Traffic throughput",
                         ("bits_per_second",),
-                        ylabel="bit/s",
+                        ylabel="MiB/s",
+                        y_scale=1 / (8 * 1024**2),
                     ),
                     *lines(
                         pd.DataFrame(rows),

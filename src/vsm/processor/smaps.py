@@ -77,7 +77,8 @@ class SmapsProcessor(NativeFileProcessor[FileRecord]):
                 data.frame,
                 label,
                 tuple(column.name for column in data.columns if column.unit == unit),
-                ylabel=unit,
+                ylabel="MiB" if unit == "B" else unit,
+                y_scale=1 / 1024**2 if unit == "B" else 1.0,
                 group_by=("path", "pid", "start_ticks"),
             )
         )

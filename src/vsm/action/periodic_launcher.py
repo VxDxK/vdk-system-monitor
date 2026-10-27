@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from typing import ClassVar
 
 from vsm._cleanup import cleanup
+from vsm.action._collector import finalize_capture
 from vsm.action._interval import validate_interval
 from vsm.action.action import ActionContext
 from vsm.action.capture import Capture
-from vsm.models import Exec, LogMetadata, LogRef, MonitorError, Schema
+from vsm.clock import TimeOrigin
+from vsm.models import Exec, MonitorError, Schema
 from vsm.util.records import TextRecord
 
 
@@ -38,15 +41,16 @@ class PeriodicLauncher:
         stop = asyncio.Event()
         ready = asyncio.Event()
 
+        start = time.monotonic_ns()
+
         async def loop() -> None:
-            start = asyncio.get_running_loop().time()
             with output.open("x") as stream:
                 while not stop.is_set():
                     result = await ctx.connection.run(Exec(argv=self.argv))
                     stream.write(
                         json.dumps(
                             {
-                                "time_ns": round((asyncio.get_running_loop().time() - start) * 1e9),
+                                "time_ns": time.monotonic_ns() - start,
                                 "stdout": result.stdout.decode(errors="replace"),
                                 "stderr": result.stderr.decode(errors="replace"),
                             }
@@ -86,17 +90,13 @@ class PeriodicLauncher:
             except asyncio.CancelledError:
                 pass
             finally:
-                capture.finalize(
-                    LogRef(
-                        path=output,
-                        schema=Schema(name=self.schema_name),
-                        device_id=ctx.connection.device_id,
-                        action_id=ctx.action_id,
-                        complete=ready.is_set() and (task.cancelled() or task.exception() is None),
-                        metadata=LogMetadata(
-                            target=ctx.connection.target,
-                            provider="periodic",
-                            interval_seconds=self.interval / 1000,
-                        ),
-                    )
+                await finalize_capture(
+                    capture,
+                    ctx,
+                    output,
+                    Schema(name=self.schema_name),
+                    complete=ready.is_set() and (task.cancelled() or task.exception() is None),
+                    interval_ms=self.interval,
+                    provider="periodic",
+                    time_origin=TimeOrigin(domain="controller_monotonic", value_ns=start),
                 )

@@ -142,6 +142,11 @@ for module in ("vsm.action.registry", "vsm.processor.registry", "pandas", "async
         )
         self.assertIn("allow_partial", self.invoke("docs", "processors", "rup")[1])
         self.assertIn("destination: str (required)", self.invoke("docs", "connections", "ssh")[1])
+        fio = self.invoke("docs", "actions", "fio")[1]
+        self.assertIn("args: tuple[str, ...]", fio)
+        self.assertNotIn("mode:", fio)
+        self.assertIn("do() waits for completion", fio)
+        self.assertIn("await capture.wait()", fio)
 
     def test_search_is_literal_case_insensitive_or_and_covers_details(self):
         status, output, errors = self.invoke("docs", "actions", "-s", "SCALING_CUR_FREQ", "--brief")

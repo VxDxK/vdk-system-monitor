@@ -7,6 +7,7 @@ import pandas as pd
 
 from vsm.chart.chart import Chart
 from vsm.chart.line import lines
+from vsm.clock import TimeOrigin
 from vsm.processing import Params
 from vsm.processor._text import TextProcessor
 
@@ -15,6 +16,17 @@ class IperfProcessor(TextProcessor):
     """Decode iperf3 JSON throughput intervals and summary metrics."""
 
     name = "iperf"
+
+    def time_origin(self, raw, source) -> TimeOrigin | None:
+        # iperf's connection-start epoch is second-resolution, independently of launch.
+        stamp = json.loads(raw).get("start", {}).get("timestamp", {}).get("timesecs")
+        if type(stamp) is int and stamp >= 0:
+            return TimeOrigin(
+                domain="target_realtime",
+                value_ns=stamp * 1_000_000_000,
+                uncertainty_ns=1_000_000_000,
+            )
+        return None
 
     def parse(self, data: str, params: Params) -> list[dict[str, object]]:
         rows: list[dict[str, object]] = []

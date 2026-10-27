@@ -10,14 +10,13 @@ from vsm._cleanup import cleanup
 from vsm.action._collector import (
     await_ready,
     cancel_task,
-    log_ref,
+    finalize_capture,
     output_ready,
     watch_exit,
 )
-from vsm.action._launch_mode import LaunchScope, foreground_log
+from vsm.action._lifecycle import OwnedScope, completed_log
 from vsm.action.action import ActionContext
 from vsm.action.capture import Capture
-from vsm.action.launch_mode import LaunchMode
 from vsm.models import Exec, FileOutput, LogRef, Schema
 from vsm.util.records import TextRecord
 
@@ -29,6 +28,9 @@ class CommandCollector:
     The executable must be available through the connection and its permissions
     must permit the requested operation. Raw profiles and traces may have no
     processor. capture.log is available only after resource finalization.
+    do() waits for completion and returns a finalized log. use() yields a capture
+    and stops/finalizes on scope exit; explicitly await capture.wait() inside the
+    scope for natural completion. Open-ended commands wait until cancelled in do().
     """
 
     #: Arguments passed to the target executable; see that tool's --help.
@@ -36,14 +38,11 @@ class CommandCollector:
     executable_name: ClassVar[str] = ""
     schema_name: ClassVar[str] = "text"
 
-    #: FOREGROUND uses do(); background modes use a resource scope (default stop on exit).
-    mode: LaunchMode = LaunchMode.BACKGROUND_STOP
-
     def open(self, ctx: ActionContext) -> AbstractAsyncContextManager[Capture[TextRecord]]:
-        return LaunchScope(self.mode, CommandCollector._open(self, ctx))
+        return OwnedScope(CommandCollector._open(self, ctx))
 
     async def run(self, ctx: ActionContext) -> LogRef[TextRecord]:
-        return await foreground_log(self.mode, CommandCollector._open(self, ctx))
+        return await completed_log(CommandCollector._open(self, ctx))
 
     @asynccontextmanager
     async def _open(self, ctx: ActionContext) -> AsyncIterator[Capture[TextRecord]]:
@@ -63,13 +62,9 @@ class CommandCollector:
                 await await_ready(
                     output_ready(output),
                     wait,
-                    allow_exit=self.mode is not LaunchMode.BACKGROUND_STOP,
+                    allow_exit=True,
                 )
-                ctx.supervise(
-                    watch_exit(
-                        wait, stopping, allow_exit=self.mode is not LaunchMode.BACKGROUND_STOP
-                    )
-                )
+                ctx.supervise(watch_exit(wait, stopping, allow_exit=True))
                 yield capture
             finally:
                 stopping.set()
@@ -81,12 +76,11 @@ class CommandCollector:
                     try:
                         await cancel_task(wait)
                     finally:
-                        capture.finalize(
-                            log_ref(
-                                ctx,
-                                output,
-                                Schema[TextRecord](name=self.schema_name),
-                                complete=complete,
-                                interval_ms=None,
-                            )
+                        await finalize_capture(
+                            capture,
+                            ctx,
+                            output,
+                            Schema[TextRecord](name=self.schema_name),
+                            complete=complete,
+                            interval_ms=None,
                         )

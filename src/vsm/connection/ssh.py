@@ -15,6 +15,7 @@ from asyncssh import SFTPNoSuchFile, SFTPNoSuchPath
 
 from vsm._cleanup import cleanup
 from vsm.binary import BinaryProvider
+from vsm.clock import TargetClock
 from vsm.connection._command import shell_command
 from vsm.connection._targetctl_transport import SSHChannel, ssh_channel
 from vsm.connection.connection import BaseConnection, Connection
@@ -52,6 +53,9 @@ class SSHConnection(BaseConnection):
         self._targetctl = TargetctlClient(
             self, binaries or BinaryProvider(), targetctl or TargetctlOptions()
         )
+
+    async def sample_clock(self) -> TargetClock:
+        return await self._targetctl.sample_clock()
 
     def launch(
         self, command: Command, *, stdout: Output | None = None, stderr: Output | None = None
@@ -229,7 +233,8 @@ class SSH:
                         binaries=self.binaries,
                         targetctl=self.targetctl,
                     )
-                    yield conn
+                    async with conn._clock_tracker.session():
+                        yield conn
                 finally:
                     # Creation may have finished after cancellation was requested.
                     # Reconcile its result before closing the transport/SFTP scope.

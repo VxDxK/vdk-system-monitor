@@ -7,7 +7,12 @@ contract described below; targetctl has a separate control protocol.
 Each record from rfpoll, pspider, socket-stat, or rgen has `type`, increasing
 `sequence`, and elapsed monotonic `time_ns`.
 The first record is metadata with a tool schema, package version, wall-clock
-origin, target tick frequency/page size, and boot identity. A clean `end` record
+origin, target tick frequency/page size, and boot identity. Native metadata also
+records `monotonic_origin_ns`, the system-wide Linux CLOCK_MONOTONIC origin of
+elapsed `time_ns`, and `origin_uncertainty_ns`, its bracketing precision. Controller
+UTC is derived through framework clock calibration, never from native `wall_ns`.
+This shared origin contract applies to rfpoll, pspider, socket-stat and rgen;
+upstream rup JSONL remains unchanged. A clean `end` record
 identifies a complete stream. SIGTERM/SIGINT request graceful exit; forced stop
 or missing/truncated end means incomplete data. Read errors are distinct records.
 
@@ -25,6 +30,13 @@ the recorded readiness. The capture remains scoped and its log is finalized at
 scope exit. Missing readiness or a nonzero exit remains an error; a missing clean
 end marker leaves the log incomplete. Open-ended collection still treats an
 unexpected tool exit as a failure.
+
+Launch-like Python actions (Launch, command wrappers, TrafficGenerator, and Rup)
+accept successful natural completion through either invocation style. `do()`
+awaits completion and cleanup; `use()` stops/finalizes on exit, with explicit
+`wait()` inside the scope to await natural completion. Readiness, nonzero-exit,
+and log-completeness checks still apply. This Python lifecycle policy does not
+change native CLI or log formats.
 
 | Tool | Main interface | Data |
 |---|---|---|

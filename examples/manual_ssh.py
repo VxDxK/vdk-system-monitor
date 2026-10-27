@@ -3,8 +3,9 @@
 Usage: python examples/manual_ssh.py NAME HOST --protocol tcp
 Requires built native artifacts, Linux x86-64 on both machines, known SSH host
 key, SFTP, readable CPU-frequency sources and access to each workload's /proc.
-HOST must accept direct traffic on --port; no SSH tunnel is created. The password
-is prompted without echo. Press Enter to stop; EOF or
+HOST must accept direct traffic on --port; no SSH tunnel is created. Use
+--auth password (default) to prompt without echo, or --auth key for ~/.ssh/id_rsa.
+Press Enter to stop; EOF or
 cancellation aborts export with cleanup. All output stays on the controller.
 """
 
@@ -14,6 +15,7 @@ import getpass
 import socket
 import time
 from dataclasses import replace
+from datetime import timedelta, timezone
 from ipaddress import IPv4Address, IPv6Address, ip_address
 from pathlib import Path
 
@@ -27,7 +29,7 @@ from vsm.action.smaps import Smaps
 from vsm.action.traffic_generator import TrafficGenerator
 from vsm.connection.host import Host
 from vsm.connection.ssh import SSH
-from vsm.output.charts import export_charts
+from vsm.output.charts import ExportOptions, export_charts
 from vsm.processing import Params, process
 from vsm.processor.cpu_freq import CpuFreqProcessor
 from vsm.processor.meminfo import MeminfoProcessor
@@ -54,8 +56,9 @@ async def resolve_address(host: str, port: int, address: str | None) -> Endpoint
 async def main(
     name: str,
     host: str,
-    password: str,
+    password: str | None = None,
     *,
+    client_keys: tuple[Path, ...] = (),
     port: int = 5000,
     protocol: TrafficProtocol = TrafficProtocol.TCP,
     address: str | None = None,
@@ -68,7 +71,9 @@ async def main(
     output = ROOT / "runs" / f"manual-ssh-{time.time_ns()}"
     async with Run(output) as run:
         client = await run.connect(Host())
-        server = await run.connect(SSH(destination=host, username=name, password=password))
+        server = await run.connect(
+            SSH(destination=host, username=name, password=password, client_keys=client_keys)
+        )
         async with (
             client.use(CpuFreq()) as client_frequency,
             client.use(ProcStat()) as client_cpu,
@@ -166,7 +171,10 @@ async def main(
                 )
                 results.append(labeled)
         export_charts(
-            results, output / "charts.html", title="Host client and SSH server rgen metrics"
+            results,
+            output / "charts.html",
+            title="Host client and SSH server rgen metrics",
+            options=ExportOptions(timezone=timezone(timedelta(hours=3))),
         )
     print(output)
 
@@ -176,6 +184,12 @@ def cli() -> None:
     parser.add_argument("name", help="SSH login username")
     parser.add_argument(
         "host", help="SSH hostname or IP address; also the default traffic destination"
+    )
+    parser.add_argument(
+        "--auth",
+        choices=("password", "key"),
+        default="password",
+        help="SSH authentication: password prompt (default) or ~/.ssh/id_rsa",
     )
     parser.add_argument("--port", type=int, default=5000, help="direct traffic port (not SSH)")
     parser.add_argument(
@@ -206,8 +220,12 @@ def cli() -> None:
             ip_address(args.address)
         except ValueError:
             parser.error("--address must be a numeric IPv4/IPv6 address")
-    password = getpass.getpass(f"Password for {args.name}@{args.host}: ")
-    asyncio.run(main(password=password, **vars(args)))
+    auth = vars(args).pop("auth")
+    password = (
+        getpass.getpass(f"Password for {args.name}@{args.host}: ") if auth == "password" else None
+    )
+    client_keys = (Path("~/.ssh/id_rsa").expanduser(),) if auth == "key" else ()
+    asyncio.run(main(password=password, client_keys=client_keys, **vars(args)))
 
 
 if __name__ == "__main__":

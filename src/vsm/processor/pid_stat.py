@@ -107,7 +107,8 @@ class PidStatProcessor:
             if ios:
                 counters = tuple(k for k in ios[0] if k not in ("time", "pid", "start_ticks"))
                 ios = rate_rows(ios, ("pid", "start_ticks"), counters)
-            return (replace(io_dataset(ios, source), warnings=warnings),)
+            result = io_dataset(ios, source)
+            return (replace(result, warnings=result.warnings + warnings),)
         results = (
             task_dataset("processes_info", procs, source),
             task_dataset("threads_info", threads, source),
@@ -177,7 +178,14 @@ def task_dataset(
     frame = result.frame
     if name == "processes_info":
         primary = (
-            *lines(frame, "Process RSS", ("rss_bytes",), ylabel="B", group_by=group),
+            *lines(
+                frame,
+                "Process RSS",
+                ("rss_bytes",),
+                ylabel="MiB",
+                y_scale=1 / 1024**2,
+                group_by=group,
+            ),
             *lines(frame, "Threads per process", ("threads",), ylabel="threads", group_by=group),
         )
         extra = lines(
@@ -190,19 +198,35 @@ def task_dataset(
                 ("user_percent", "Thread load · user", "%"),
                 ("system_percent", "Thread load · system", "%"),
                 ("busy_percent", "Thread load · total", "%"),
-                ("cpu_binding", "Thread CPU binding", "CPU"),
+                ("cpu_binding", "Thread last CPU", "CPU"),
             )
-            for chart in lines(frame, label, (column,), ylabel=unit, group_by=group)
+            for chart in lines(
+                frame,
+                label,
+                (column,),
+                ylabel=unit,
+                group_by=group,
+                y_range=(0, 100) if unit == "%" else None,
+                integer_y=column == "cpu_binding",
+                step=column == "cpu_binding",
+            )
         )
         extra = (
-            *lines(frame, "Thread RSS", ("rss_bytes",), ylabel="B", group_by=group),
+            *lines(
+                frame,
+                "Thread RSS",
+                ("rss_bytes",),
+                ylabel="MiB",
+                y_scale=1 / 1024**2,
+                group_by=group,
+            ),
             *lines(frame, "Thread count", ("threads",), ylabel="threads", group_by=group),
         )
     return replace(
         result,
         warnings=result.warnings
         + (
-            ("Unavailable: thread CPU binding (not captured).",)
+            ("Unavailable: thread last CPU (not captured).",)
             if name == "threads_info" and "cpu_binding" not in frame and not frame.empty
             else ()
         ),

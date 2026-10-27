@@ -2,10 +2,12 @@
 
 import asyncio
 import fnmatch
+import time
 from contextlib import asynccontextmanager
 from itertools import count
 from pathlib import Path
 
+from vsm.clock import TargetClock
 from vsm.connection.connection import BaseConnection
 from vsm.models import (
     Completed,
@@ -71,6 +73,14 @@ class FakeProcess:
 
 
 class FakeConnection(BaseConnection):
+    async def sample_clock(self) -> TargetClock:
+        return TargetClock(
+            boot_id=self.target.boot_id,
+            monotonic_ns=time.monotonic_ns(),
+            realtime_ns=time.time_ns(),
+            uncertainty_ns=0,
+        )
+
     def __init__(self):
         super().__init__(
             DeviceId("fixture-device"),
@@ -188,7 +198,9 @@ class FakeConnection(BaseConnection):
         elif output:
             schema = "pspider" if Path(command.argv[0]).name == "pspider" else "rfpoll"
             output.write_text(
-                f'{{"type":"metadata","schema":"{schema}","time_ns":0}}\n{{"type":"ready","time_ns":0}}\n'
+                f'{{"type":"metadata","schema":"{schema}","time_ns":0,'
+                f'"boot_id":"{self.target.boot_id}","monotonic_origin_ns":{time.monotonic_ns()},'
+                '"origin_uncertainty_ns":0}\n{"type":"ready","time_ns":0}\n'
             )
         if isinstance(stderr, FileOutput):
             stderr.path.write_bytes(b"")

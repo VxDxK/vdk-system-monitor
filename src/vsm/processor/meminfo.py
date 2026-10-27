@@ -54,19 +54,28 @@ class MeminfoProcessor(NativeFileProcessor[FileRecord]):
         capacity = ("VmallocTotal", "VmallocChunk")
         byte_fields = tuple(column.name for column in data.columns if column.unit == "B")
         charts = (
-            *lines(data.frame, "Physical memory", physical, ylabel="B", group_by=()),
+            *lines(
+                data.frame,
+                "Physical memory",
+                physical,
+                ylabel="MiB",
+                y_scale=1 / 1024**2,
+                group_by=(),
+            ),
             *lines(
                 data.frame,
                 "Memory accounting",
                 tuple(field for field in byte_fields if field not in physical + capacity),
-                ylabel="B",
+                ylabel="MiB",
+                y_scale=1 / 1024**2,
                 group_by=(),
             ),
             *lines(
                 data.frame,
                 "Kernel virtual address space capacity",
                 capacity,
-                ylabel="B",
+                ylabel="MiB",
+                y_scale=1 / 1024**2,
                 group_by=(),
             ),
             *lines(
@@ -85,7 +94,9 @@ class MeminfoProcessor(NativeFileProcessor[FileRecord]):
                 y_range=(0, 100),
             ),
         )
-        overview = lines(data.frame, "Memory usage", byte_fields, ylabel="B", group_by=())
+        overview = lines(
+            data.frame, "Memory usage", byte_fields, ylabel="MiB", y_scale=1 / 1024**2, group_by=()
+        )
         return replace(
             data,
             charts=(

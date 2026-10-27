@@ -57,6 +57,25 @@ device/boot/start identities before startup. PidStat, ProcessIo, and Smaps also
 pin identities during native sampling; their lifecycle/log contracts are described
 in [native contracts](native-contracts.md#identity-pinned-process-sampling).
 
+## Clock calibration
+
+The request-mode `clock` operation accepts empty params and returns one terminal
+result with `boot_id`, `monotonic_ns`, `realtime_ns`, and `uncertainty_ns`.
+The monotonic reading uses system-wide Linux CLOCK_MONOTONIC, unlike the helper's
+process-relative envelope timing. Realtime is bracketed by monotonic readings;
+the result uses their midpoint and half-width (rounded up). `capabilities` lists
+`clock` alongside the other operations.
+
+`Connection.sample_clock()` returns `TargetClock`.
+`Connection.calibrate_clock()` returns a `ClockCalibration` snapshot after a
+five-probe batch bounded to ten seconds. Host and SSH own initial, periodic
+(30-second) and final calibration. Captures also checkpoint at finalization.
+Boot identities must match. Timing failure is retained as a warning rather than
+making successful measurement data unusable. See
+[controller UTC timelines](chart-reports.md#controller-utc-timelines) for accuracy,
+uncertainty and offline persistence. Cleanup and process leases are independent
+of calibration success.
+
 ## Lifecycle and cleanup
 
 Each launch owns a dedicated supervisor, control channel, workload process group,

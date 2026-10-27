@@ -118,28 +118,41 @@ or `capture.wait()` cancels that wait and leaves termination to its owning scope
 Tool durations request normal finite completion, and probe reply timeouts and
 internal startup/cleanup/lease safeguards retain their distinct meanings.
 
-Launch-like actions accept `mode` from `vsm.action.launch_mode.LaunchMode`.
-`FOREGROUND` uses `await device.do(action)` and returns a finalized `LogRef`
-(`Completed` for `Launch`). Background modes use `async with device.use(action)`
-and return the existing capture/process handle: `BACKGROUND_WAIT` waits for
-natural completion on normal exit; `BACKGROUND_STOP` stops and reaps on exit
-and remains the default. Both establish startup/readiness before returning.
-Errors and cancellation stop owned work in every mode; cancellation of an
-individual `capture.wait()` does not itself stop the workload. No mode releases
-process ownership. Waiting requires a tool-side completion condition such as
-rgen's duration, rup's count/duration, or ping's `-c` option. Open-ended services
-normally use `BACKGROUND_STOP`.
+Launch-like actions support both invocation styles. `await device.do(action)`
+waits for natural completion and cleanup, returning a finalized `LogRef`
+(`Completed` for `Launch`). `async with device.use(action)` establishes readiness
+and yields an owned capture/process; scope exit stops and reaps remaining work
+and finalizes its log. To let a scoped workload finish naturally, explicitly
+`await capture.wait()` inside the scope. Its log becomes available after scope exit.
+Successful tool completion is allowed while the scope remains open; readiness and
+nonzero-exit checks still apply.
+
+Natural waits are cancellable. Errors and scope cancellation stop owned work,
+with cancellation-resistant cleanup joined before returning. Cancelling an
+individual `capture.wait()` does not itself stop the workload. Waiting requires
+a tool-side completion condition such as rgen's duration, rup's count/duration,
+or ping's `-c` option; an open-ended tool keeps `do()` waiting until cancelled.
+Use `run.spawn(device.do(action))` to run a finite action concurrently under the
+run's supervision; the run joins its tasks on normal exit and cancels siblings
+on failure.
 
 ```python
-from vsm.action.launch_mode import LaunchMode
-from vsm.action.traffic_generator import TrafficGenerator
-from vsm.util.network import Endpoint
+from vsm.action.fio import Fio
 
-# Requires a consumer already listening at this endpoint.
-log = await host.do(TrafficGenerator(
-    address=Endpoint.parse("127.0.0.1:5000"), duration=5,
-    mode=LaunchMode.FOREGROUND,
+# fio must be installed on the target; choose a path on the filesystem to measure.
+benchmark = Fio(args=(
+    "--name=sequential-write", "--filename=/path/to/benchmark-file",
+    "--rw=write", "--bs=1m", "--size=64m",
 ))
+log = await host.do(benchmark)
+
+async with host.use(benchmark) as capture:
+    await capture.wait()
+log = capture.log
+
+# The run owns and joins the task even if its handle is not explicitly awaited.
+task = run.spawn(host.do(benchmark))
+log = await task
 ```
 
 Examples:
@@ -147,6 +160,7 @@ Examples:
 ```bash
 uv run python examples/manual.py --port 5000
 uv run python examples/manual_ssh.py alice benchmark-server --port 5000
+uv run python examples/manual_ssh.py alice benchmark-server --auth key --port 5000
 ```
 
 `examples/manual.py` starts a local TCP rup server and client on loopback. It
@@ -159,8 +173,10 @@ is needed. Raw logs, CSV/sidecar pairs under `host/`, `client/`, and `server/`, 
 one combined `charts.html` stay under a fresh `runs/manual-*` directory.
 
 `examples/manual_ssh.py NAME HOST` starts a local rgen producer through Host and a
-remote consumer through SSH on port 22. It prompts for the password without echo
-and retains normal known-host verification. Both machines require Linux x86-64,
+remote consumer through SSH on port 22. By default (`--auth password`), it prompts
+for the password without echo. Use `--auth key` to load the controller's
+`~/.ssh/id_rsa` private key without a password prompt. Both modes retain normal
+known-host verification. Both machines require Linux x86-64,
 compatible built native artifacts, readable CPU-frequency sources, and permission
 to read the workloads' `/proc` files; the SSH target also needs SFTP. The consumer
 binds a wildcard address and must accept direct traffic from the controller on
@@ -175,6 +191,11 @@ is the default; `--protocol udp` selects UDP. `--workers` defaults to 1 and
 aggregate producer limit in bit/s, for example `--protocol udp --rate-bps 10000000`.
 All raw logs and exports stay locally under `runs/manual-ssh-*`, with `client/`
 and `server/` CSV/sidecar directories and one combined `charts.html`.
+
+Both manual examples display chart dates in UTC+03:00. Dataset and CSV timestamps
+remain UTC. Other exports default to UTC; select a fixed offset with
+`ExportOptions(timezone=timezone(timedelta(hours=3)))` from `vsm.output.charts`,
+using `timezone` and `timedelta` from `datetime`. See [chart reports](docs/chart-reports.md).
 
 Both examples wait for Enter on the controller after the server, client, and
 collectors are ready. There is no collection deadline; Enter ends the resource

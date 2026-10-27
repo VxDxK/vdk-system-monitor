@@ -10,8 +10,8 @@ from vsm._cleanup import cleanup
 from vsm.action._collector import (
     await_ready,
     cancel_task,
+    finalize_capture,
     last_record,
-    log_ref,
     native_ready,
     watch_exit,
 )
@@ -89,12 +89,11 @@ class PidStat:
                     try:
                         await cancel_task(wait)
                     finally:
-                        capture.finalize(
-                            log_ref(
-                                ctx,
-                                output,
-                                Schema[ProcessRecord](name=self.schema_name),
-                                complete=complete,
-                                interval_ms=self.interval,
-                            )
+                        await finalize_capture(
+                            capture,
+                            ctx,
+                            output,
+                            Schema[ProcessRecord](name=self.schema_name),
+                            complete=complete,
+                            interval_ms=self.interval,
                         )

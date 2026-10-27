@@ -11,14 +11,13 @@ from vsm._cleanup import cleanup
 from vsm.action._collector import (
     await_ready,
     cancel_task,
-    log_ref,
+    finalize_capture,
     output_ready,
     watch_exit,
 )
-from vsm.action._launch_mode import LaunchScope, foreground_log
+from vsm.action._lifecycle import OwnedScope, completed_log
 from vsm.action.action import ActionContext
 from vsm.action.capture import Capture
-from vsm.action.launch_mode import LaunchMode
 from vsm.action.set_file import SetFile
 from vsm.models import Exec, FileOutput, LogRef, Schema, TargetPath
 from vsm.util.records import TextRecord
@@ -26,13 +25,15 @@ from vsm.util.records import TextRecord
 
 @dataclass(frozen=True, kw_only=True)
 class Ftrace:
-    """Configure scoped kernel tracing and retain a raw trace artifact."""
+    """Configure scoped kernel tracing and retain a raw trace artifact.
+
+    use() stops/finalizes on exit; do() waits for natural completion or caller
+    cancellation. The trace reader normally runs until its scope exits.
+    """
 
     events: tuple[str, ...] = ()
     directory: str = "/sys/kernel/tracing"
     claim: ClassVar[str] = "ftrace"
-    #: FOREGROUND uses do(); background modes use a resource scope (default stop on exit).
-    mode: LaunchMode = LaunchMode.BACKGROUND_STOP
 
     async def claims(self, ctx: ActionContext) -> tuple[TargetPath, ...]:
         return (
@@ -45,10 +46,10 @@ class Ftrace:
         )
 
     def open(self, ctx: ActionContext) -> AbstractAsyncContextManager[Capture[TextRecord]]:
-        return LaunchScope(self.mode, Ftrace._open(self, ctx))
+        return OwnedScope(Ftrace._open(self, ctx))
 
     async def run(self, ctx: ActionContext) -> LogRef[TextRecord]:
-        return await foreground_log(self.mode, Ftrace._open(self, ctx))
+        return await completed_log(Ftrace._open(self, ctx))
 
     @asynccontextmanager
     async def _open(self, ctx: ActionContext) -> AsyncIterator[Capture[TextRecord]]:
@@ -86,13 +87,9 @@ class Ftrace:
                     await await_ready(
                         output_ready(output),
                         wait,
-                        allow_exit=self.mode is not LaunchMode.BACKGROUND_STOP,
+                        allow_exit=True,
                     )
-                    ctx.supervise(
-                        watch_exit(
-                            wait, stopping, allow_exit=self.mode is not LaunchMode.BACKGROUND_STOP
-                        )
-                    )
+                    ctx.supervise(watch_exit(wait, stopping, allow_exit=True))
                     yield c
                 finally:
                     stopping.set()
@@ -104,12 +101,11 @@ class Ftrace:
                         try:
                             await cancel_task(wait)
                         finally:
-                            c.finalize(
-                                log_ref(
-                                    ctx,
-                                    output,
-                                    Schema[TextRecord](name="ftrace"),
-                                    complete=complete,
-                                    interval_ms=None,
-                                )
+                            await finalize_capture(
+                                c,
+                                ctx,
+                                output,
+                                Schema[TextRecord](name="ftrace"),
+                                complete=complete,
+                                interval_ms=None,
                             )

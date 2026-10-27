@@ -3,7 +3,8 @@
 `export_charts` writes self-contained offline HTML by default. Measurement
 families have full-width collapsible headings and a two-column desktop grid;
 reports switch to one column at 850px. `columns` is a positive integer and
-controls the desktop column count. `Layout.TABLE` keeps sections expanded;
+controls the desktop column count. A sole chart in a primary or additional group
+spans the full grid width. `Layout.TABLE` keeps sections expanded;
 `Layout.FILES` emits separate, uniquely named chart files. Explicit Matplotlib
 reports embed PNG; separate static charts support PNG, JPEG, SVG and PDF.
 
@@ -14,6 +15,62 @@ existing figures retain their zoom and visibility. Only wide **data tables**
 scroll horizontally. The report itself scrolls vertically. Source details retain
 full paths, raw entity identities, schema, target and completeness information.
 Warnings appear outside chart grids. Empty datasets have an explicit empty state.
+
+## Controller UTC timelines
+
+Genuine time-series charts default to **Date/time (UTC)** when controller timing
+was recorded. Dates come from the machine running vsm, independent of the viewer's
+time zone and target wall-clock settings. Hover text includes full date/time
+and estimated alignment uncertainty. Elapsed `time` seconds and rate calculations
+remain unchanged. Nullable integer `timestamp_ns` (UTC Unix epoch nanoseconds) and
+`timestamp_uncertainty_ns` survive CSV/sidecar round trips.
+`Line.datetime_x=False` and `lines(..., datetime_x=False)` select elapsed axes.
+
+Choose a fixed display offset through Python export options:
+
+```python
+from datetime import timedelta, timezone
+from vsm.output.charts import ExportOptions, export_charts
+
+export_charts(datasets, destination,
+              options=ExportOptions(timezone=timezone(timedelta(hours=3))))
+```
+
+This labels axes and hover text **UTC+03:00** in both report backends and separate
+chart exports. `Line.as_plotly()` and `Line.as_matplotlib()` also accept the
+`timezone=` keyword for direct figures. Only standard-library `datetime.timezone`
+objects with whole-minute fixed offsets are supported; named zones and daylight
+saving rules are not. UTC remains the export default. Both manual examples
+explicitly select UTC+03:00. Rendering leaves UTC dataset values, chart descriptions,
+provenance and CSV exports unchanged; custom charts keep their existing protocol.
+
+Host and SSH measure alignment using targetctl. Five probes run at connection
+entry, every 30 seconds, capture finalization and connection exit. The lowest
+round-trip sample of each batch is retained. Mapping interpolates between
+monotonic samples; extrapolation budgets an estimated 100 ppm drift. Half the
+round trip, target reading precision, controller anchor precision and tool
+resolution contribute to uncertainty. This estimate is not a synchronization
+guarantee and does not model arbitrary clock-rate changes or tool buffering.
+Calibration batches are bounded to ten seconds; failures preserve measurements
+and produce warnings. Calibration workers are joined during connection cleanup.
+
+Controller UTC is anchored once per connection and advanced with monotonic time;
+later controller wall-clock adjustments do not create timeline jumps. Native
+collectors record their monotonic origin. Periodic commands use controller-observed
+completion time, not the exact target measurement instant. Iperf uses its recorded
+start epoch with one-second uncertainty; rup uses upstream millisecond timestamps.
+Detected target realtime discontinuities disable conversion for realtime-based
+sources; monotonic native sources remain usable. Boot mismatches invalidate the
+affected mapping. Undetected changes between probes cannot be excluded.
+
+Unavailable mappings produce an explicit warning and elapsed axes. Request and
+snapshot numbers, categories, frequency axes and distributions retain natural
+axes. Summary-only actions and raw profiles do not acquire invented sample dates.
+Framework captures save timing in `<log filename>.metadata.json`; keep it beside
+the raw native log when re-importing through `load_native`. CSV exports include
+their own timing provenance and need no raw logs. Existing captures without
+controller calibration cannot acquire measured UTC dates retroactively. No run
+journal is rewritten.
 
 ## Labels and CSV
 
@@ -26,12 +83,28 @@ names gain distinguishing suffixes. Grouping uses raw identities, so duplicate
 names never combine distinct series. Full grouping identities also appear in
 line-chart hover text and source details.
 
+CPU-frequency charts display GHz. Meminfo, smaps and process/thread RSS charts
+display MiB; interface and rgen throughput charts display MiB/s. One MiB is
+1,048,576 bytes; bit/s throughput is divided by 8,388,608. These conversions apply
+to plotted values and hover text in both rendering backends. Dataset and CSV
+values retain their canonical Hz, B and bit/s or B/s units.
+
+Thread user/system/total load charts use a 0–100% axis; aggregate process CPU
+charts remain unrestricted because they can exceed 100%. “Thread last CPU” shows
+the last CPU reported by procfs, not an affinity constraint. Integer ticks and
+step lines avoid suggesting fractional CPU identities.
+
 `SeriesChart.label_column` defaults to `entity_label`; set it to `None` to use
 raw grouping values. `metric_labels` accepts `(column, display-name)` pairs.
 Single-metric legends use entity names; multi-metric legends include the metric.
 `additional=True` places a chart after the primary families. Custom charts
 implement the `Chart` protocol. `Table` is an explicit tabular chart description;
 it also supports direct Plotly and Matplotlib figures.
+
+`Line.y_scale` multiplies numeric Y values for display (default 1.0).
+`integer_y=True` requests integer ticks and `step=True` holds the previous value
+until the next sample. These options are also available through `lines()` and
+are preserved in CSV chart metadata; scaling does not change the source frame.
 
 ## Saved datasets
 
@@ -88,10 +161,10 @@ remain gaps. Rup uses upstream 0.15.1 response accounting.
 | temperature | Named thermal sensors |
 | frame_count | Frame rate |
 | proc_stat | User, nice, system, idle, I/O wait, IRQ, soft IRQ, steal and total busy |
-| pid_stat | Process RSS/thread count; thread user/system/total CPU and CPU binding |
+| pid_stat | Process RSS/thread count; thread user/system/total CPU and last CPU |
 | meminfo | Byte fields, unitless counters, and detailed memory accounting |
 | smaps | Memory byte fields and available counters |
-| net_dev | Per-interface throughput, packets, drops/errors/FIFO, raw-counter table |
+| net_dev | Per-interface throughput, packets, drops/errors/FIFO; raw counters remain in datasets/CSV |
 | net_snmp | Rates together per protocol; gauges separately with their own units |
 | net_udp | Per-socket queues and available drop rates |
 | socket_stat | Per-socket congestion window, RTT, throughput, memory buffers |

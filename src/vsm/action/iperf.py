@@ -9,22 +9,26 @@ from vsm._cleanup import cleanup
 from vsm.action._collector import (
     await_ready,
     cancel_task,
-    log_ref,
+    finalize_capture,
     output_ready,
     tcp_ready,
     watch_exit,
 )
-from vsm.action._launch_mode import LaunchScope, foreground_log
+from vsm.action._lifecycle import OwnedScope, completed_log
 from vsm.action.action import ActionContext
 from vsm.action.capture import Capture
-from vsm.action.launch_mode import LaunchMode
 from vsm.models import Exec, FileOutput, LogRef, Schema
 from vsm.util.records import TextRecord
 
 
 @dataclass(frozen=True, kw_only=True)
 class Iperf:
-    """Run an iperf3 client or server and retain JSON output for IperfProcessor."""
+    """Run an iperf3 client or server and retain JSON output for IperfProcessor.
+
+    do() waits for completion and returns a finalized log. use() stops/finalizes
+    on exit; explicitly await capture.wait() inside the scope for natural
+    completion. Servers normally run until scope exit or caller cancellation.
+    """
 
     host: str | None = None
     port: int = 5201
@@ -32,14 +36,11 @@ class Iperf:
     server: bool = False
     udp: bool = False
 
-    #: FOREGROUND uses do(); background modes use a resource scope (default stop on exit).
-    mode: LaunchMode = LaunchMode.BACKGROUND_STOP
-
     def open(self, ctx: ActionContext) -> AbstractAsyncContextManager[Capture[TextRecord]]:
-        return LaunchScope(self.mode, Iperf._open(self, ctx))
+        return OwnedScope(Iperf._open(self, ctx))
 
     async def run(self, ctx: ActionContext) -> LogRef[TextRecord]:
-        return await foreground_log(self.mode, Iperf._open(self, ctx))
+        return await completed_log(Iperf._open(self, ctx))
 
     @asynccontextmanager
     async def _open(self, ctx: ActionContext) -> AsyncIterator[Capture[TextRecord]]:
@@ -68,13 +69,13 @@ class Iperf:
                 await await_ready(
                     tcp_ready(ctx, self.port) if self.server else output_ready(output),
                     wait,
-                    allow_exit=not self.server or self.mode is not LaunchMode.BACKGROUND_STOP,
+                    allow_exit=True,
                 )
                 ctx.supervise(
                     watch_exit(
                         wait,
                         stopping,
-                        allow_exit=not self.server or self.mode is not LaunchMode.BACKGROUND_STOP,
+                        allow_exit=True,
                     )
                 )
                 yield c
@@ -90,12 +91,11 @@ class Iperf:
                     try:
                         await cancel_task(wait)
                     finally:
-                        c.finalize(
-                            log_ref(
-                                ctx,
-                                output,
-                                Schema[TextRecord](name="iperf"),
-                                complete=complete,
-                                interval_ms=None,
-                            )
+                        await finalize_capture(
+                            c,
+                            ctx,
+                            output,
+                            Schema[TextRecord](name="iperf"),
+                            complete=complete,
+                            interval_ms=None,
                         )

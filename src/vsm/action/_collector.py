@@ -9,6 +9,8 @@ from pathlib import Path
 
 from vsm._cleanup import cleanup
 from vsm.action.action import ActionContext
+from vsm.action.capture import Capture
+from vsm.clock import ClockCalibration, TimeOrigin
 from vsm.models import CommandFailed, Completed, LogMetadata, LogRef, MonitorError, Schema
 
 
@@ -115,7 +117,25 @@ def log_ref[R](
     complete: bool,
     interval_ms: int | None = None,
     provider: str | None = None,
+    clock: ClockCalibration | None = None,
+    time_origin: TimeOrigin | None = None,
 ) -> LogRef[R]:
+    timing_warnings: tuple[str, ...] = ()
+    if time_origin is None and path.exists():
+        try:
+            with path.open("rb") as stream:
+                header = json.loads(stream.readline(65536))
+            if isinstance(header, dict) and header.get("type") == "metadata":
+                origin = header.get("monotonic_origin_ns")
+                error = header.get("origin_uncertainty_ns", 0)
+                if header.get("boot_id") != ctx.connection.target.boot_id:
+                    timing_warnings = ("Native log clock belongs to another target boot.",)
+                elif type(origin) is int and origin >= 0 and type(error) is int and error >= 0:
+                    time_origin = TimeOrigin(
+                        domain="target_monotonic", value_ns=origin, uncertainty_ns=error
+                    )
+        except ValueError, UnicodeError:
+            pass  # Processors retain responsibility for validating measurement logs.
     return LogRef(
         path=path,
         schema=schema,
@@ -126,5 +146,48 @@ def log_ref[R](
             target=ctx.connection.target,
             provider=provider or schema.name,
             interval_seconds=interval_ms / 1000 if interval_ms is not None else None,
+            clock=clock,
+            time_origin=time_origin,
+            warnings=timing_warnings,
         ),
     )
+
+
+async def finalize_capture[R](
+    capture: Capture[R],
+    ctx: ActionContext,
+    path: Path,
+    schema: Schema[R],
+    *,
+    complete: bool,
+    interval_ms: int | None = None,
+    provider: str | None = None,
+    time_origin: TimeOrigin | None = None,
+) -> None:
+    """Checkpoint clock samples and finalize a capture as one protected cleanup."""
+
+    async def finish():
+        try:
+            clock = await ctx.connection.calibrate_clock()
+            if not isinstance(clock, ClockCalibration):
+                clock = None
+        except Exception:  # noqa: BLE001 -- Measurement finalization survives clock failure.
+            clock = None
+        reference = log_ref(
+            ctx,
+            path,
+            schema,
+            clock=clock,
+            complete=complete,
+            interval_ms=interval_ms,
+            provider=provider,
+            time_origin=time_origin,
+        )
+        from vsm._dataset_metadata import encode
+
+        path.with_name(path.name + ".metadata.json").write_text(
+            json.dumps(encode(reference.metadata), indent=2) + "\n"
+        )
+        capture.finalize(reference)
+
+    await cleanup(finish())

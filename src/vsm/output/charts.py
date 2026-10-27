@@ -4,6 +4,8 @@ import base64
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from datetime import UTC
+from datetime import timezone as Timezone
 from enum import StrEnum
 from html import escape
 from io import BytesIO
@@ -13,7 +15,9 @@ import pandas as pd
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from plotly.offline import get_plotlyjs
 
+from vsm.chart._timezone import timezone_label
 from vsm.chart.chart import Chart
+from vsm.chart.line import Line
 from vsm.chart.table import Table
 from vsm.processing import Dataset
 
@@ -42,8 +46,10 @@ class ExportOptions:
     layout: Layout = Layout.FOLDABLE
     image_format: ImageFormat = ImageFormat.PNG
     columns: int = 2
+    timezone: Timezone = UTC
 
     def __post_init__(self) -> None:
+        timezone_label(self.timezone)
         if (
             not isinstance(self.backend, Backend)
             or not isinstance(self.layout, Layout)
@@ -63,8 +69,14 @@ def _safe(label: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", label).strip(".-")[:100] or "chart"
 
 
-def _image(chart: Chart, frame: pd.DataFrame, format: ImageFormat) -> bytes:
-    figure = chart.as_matplotlib(frame)
+def _image(
+    chart: Chart, frame: pd.DataFrame, format: ImageFormat, timezone: Timezone = UTC
+) -> bytes:
+    figure = (
+        chart.as_matplotlib(frame, timezone=timezone)
+        if isinstance(chart, Line)
+        else chart.as_matplotlib(frame)
+    )
     try:
         FigureCanvasAgg(figure)
         buffer = BytesIO()
@@ -96,6 +108,16 @@ def _source(data: Dataset) -> str:
         "Target": str(origin.metadata.target),
         "Numerical policy": origin.numerical_policy,
     }
+    if clock := origin.metadata.clock:
+        fields["Controller clock"] = (
+            f"UTC anchor {clock.controller_utc_ns} ns since Unix epoch; "
+            f"{len(clock.samples)} measured target calibration samples"
+        )
+    if time_origin := origin.metadata.time_origin:
+        fields["Measurement clock"] = (
+            f"{time_origin.domain}; origin {time_origin.value_ns} ns; "
+            f"origin uncertainty {time_origin.uncertainty_ns} ns"
+        )
     columns = [
         column
         for column in (
@@ -135,7 +157,9 @@ def _table(frame: pd.DataFrame) -> str:
     )
 
 
-def _card(chart: Chart, data: Dataset, number: int, backend: Backend) -> str:
+def _card(
+    chart: Chart, data: Dataset, number: int, backend: Backend, timezone: Timezone = UTC
+) -> str:
     heading = getattr(chart, "title", "") or chart.label
     parts = [f"<article class='chart'><h3>{escape(heading)}</h3>"]
     if data.frame.empty:
@@ -143,7 +167,11 @@ def _card(chart: Chart, data: Dataset, number: int, backend: Backend) -> str:
     elif isinstance(chart, Table):
         parts.append(_table(chart.select(data.frame)))
     elif backend is Backend.PLOTLY:
-        figure = chart.as_plotly(data.frame)
+        figure = (
+            chart.as_plotly(data.frame, timezone=timezone)
+            if isinstance(chart, Line)
+            else chart.as_plotly(data.frame)
+        )
         if not figure.data:
             parts.append(
                 "<p class='empty'>No measurement data available for this chart.</p></article>"
@@ -160,7 +188,9 @@ def _card(chart: Chart, data: Dataset, number: int, backend: Backend) -> str:
             f"<script type='application/json' data-figure='chart-{number:06d}'>{payload}</script>"
         )
     else:
-        image = base64.b64encode(_image(chart, data.frame, ImageFormat.PNG)).decode("ascii")
+        image = base64.b64encode(_image(chart, data.frame, ImageFormat.PNG, timezone)).decode(
+            "ascii"
+        )
         parts.append(
             f"<img alt='{escape(chart.label, quote=True)}' src='data:image/png;base64,{image}'>"
         )
@@ -195,7 +225,9 @@ def export_charts(
                     stem = f"{data_index:04d}-{chart_index:04d}-{_safe(chart.label)}"
                     if options.backend is Backend.MATPLOTLIB and not isinstance(chart, Table):
                         path = directory / (stem + "." + options.image_format.value)
-                        path.write_bytes(_image(chart, data.frame, options.image_format))
+                        path.write_bytes(
+                            _image(chart, data.frame, options.image_format, options.timezone)
+                        )
                     else:
                         path = directory / (stem + ".html")
                         export_charts(
@@ -259,7 +291,9 @@ def export_charts(
                     if bool(getattr(chart, "additional", False)) != additional:
                         continue
                     chart_number += 1
-                    cards.append(_card(chart, data, chart_number, options.backend))
+                    cards.append(
+                        _card(chart, data, chart_number, options.backend, options.timezone)
+                    )
             if cards:
                 if additional:
                     html.append("<h3 class='additional'>Additional vsm charts</h3>")

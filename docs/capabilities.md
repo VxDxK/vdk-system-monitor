@@ -20,7 +20,7 @@ privileged, and hardware behavior needs its corresponding integration environmen
 
 | Registered name | Python type | API | Processor | Parameters |
 |---|---|---|---|---|
-| `launch` | `Launch` | `do` / `use` | `—` | `argv` (required), `executable`, `mode` |
+| `launch` | `Launch` | `do` / `use` | `—` | `argv` (required), `executable` |
 | `periodic_launcher` | `PeriodicLauncher` | `use` | `—` | `argv` (required), `interval` |
 | `poll_files` | `PollFiles` | `use` | `—` | `paths` (required), `interval`, `duration` |
 | `pull` | `Pull` | `do` | `—` | `source` (required), `destination` (required) |
@@ -34,34 +34,34 @@ privileged, and hardware behavior needs its corresponding integration environmen
 | `cpu_freq_governor` | `CpuFreqGovernor` | `use` | `—` | `governor` (required), `paths` |
 | `cpu_time_in_state` | `CpuTimeInState` | `use` | `cpu_time_in_state` | `paths` |
 | `ddr_freq` | `DdrFreq` | `use` | `ddr_freq` | `paths`, `interval`, `duration` |
-| `dmesg` | `Dmesg` | `do` / `use` | `—` | `args`, `mode` |
-| `fio` | `Fio` | `do` / `use` | `fio` | `args`, `mode` |
+| `dmesg` | `Dmesg` | `do` / `use` | `—` | `args` |
+| `fio` | `Fio` | `do` / `use` | `fio` | `args` |
 | `frame_count` | `FrameCount` | `use` | `frame_count` | `paths`, `interval`, `duration` |
-| `ftrace` | `Ftrace` | `do` / `use` | `—` | `events`, `directory`, `mode` |
+| `ftrace` | `Ftrace` | `do` / `use` | `—` | `events`, `directory` |
 | `gpu_freq` | `GpuFreq` | `use` | `gpu_freq` | `paths`, `interval`, `duration` |
 | `iface_info` | `IfaceInfo` | `do` | `—` |  |
-| `iperf` | `Iperf` | `do` / `use` | `iperf` | `host`, `port`, `duration`, `server`, `udp`, `mode` |
+| `iperf` | `Iperf` | `do` / `use` | `iperf` | `host`, `port`, `duration`, `server`, `udp` |
 | `meminfo` | `Meminfo` | `use` | `meminfo` | `paths`, `interval`, `duration` |
 | `net_dev` | `NetDev` | `use` | `net_dev` | `paths`, `interval`, `duration` |
 | `net_snmp` | `NetSnmp` | `use` | `net_snmp` | `paths`, `interval`, `duration` |
 | `net_udp` | `NetUdp` | `use` | `net_udp` | `paths`, `interval`, `duration` |
 | `npu_freq` | `NpuFreq` | `use` | `npu_freq` | `paths`, `interval`, `duration` |
 | `pid_stat` | `PidStat` | `use` | `pid_stat` | `processes` (required), `interval`, `duration`, `self_only` |
-| `ping` | `Ping` | `do` / `use` | `ping` | `args`, `destination` (required), `mode` |
+| `ping` | `Ping` | `do` / `use` | `ping` | `args`, `destination` (required) |
 | `proc_stat` | `ProcStat` | `use` | `proc_stat` | `paths`, `interval`, `duration` |
-| `rup` | `Rup` | `do` / `use` | `rup` | `address` (required), `role`, `protocol`, `duration`, `interval`, `timeout`, `count`, `adaptive`, `local`, `request_size`, `response_size`, `traffic_class`, `mode` |
+| `rup` | `Rup` | `do` / `use` | `rup` | `address` (required), `role`, `protocol`, `duration`, `interval`, `timeout`, `count`, `adaptive`, `local`, `request_size`, `response_size`, `traffic_class` |
 | `scan_processes` | `ScanProcesses` | `do` | `—` | `pattern` |
 | `set_file` | `SetFile` | `use` | `—` | `path` (required), `value` (required) |
-| `simpleperf` | `Simpleperf` | `do` / `use` | `—` | `args`, `mode` |
+| `simpleperf` | `Simpleperf` | `do` / `use` | `—` | `args` |
 | `smaps` | `Smaps` | `use` | `smaps` | `paths`, `interval`, `duration`, `processes` (required) |
 | `socket_buffer_limit` | `SocketBufferLimit` | `use` | `—` | `bytes` (required) |
 | `socket_stat` | `SocketStat` | `use` | `socket_stat` | `interval`, `duration` |
 | `ss` | `Ss` | `use` | `ss` | `argv`, `interval` |
-| `strace` | `Strace` | `do` / `use` | `—` | `args`, `mode` |
-| `tcpdump` | `Tcpdump` | `do` / `use` | `—` | `args`, `mode` |
+| `strace` | `Strace` | `do` / `use` | `—` | `args` |
+| `tcpdump` | `Tcpdump` | `do` / `use` | `—` | `args` |
 | `temperature` | `Temperature` | `use` | `temperature` | `paths`, `interval`, `duration` |
-| `top` | `Top` | `do` / `use` | `top` | `args`, `mode` |
-| `traffic_generator` | `TrafficGenerator` | `do` / `use` | `traffic_generator` | `address` (required), `role`, `protocol`, `duration`, `workers`, `payload_bytes`, `rate_bps`, `mode` |
+| `top` | `Top` | `do` / `use` | `top` | `args` |
+| `traffic_generator` | `TrafficGenerator` | `do` / `use` | `traffic_generator` | `address` (required), `role`, `protocol`, `duration`, `workers`, `payload_bytes`, `rate_bps` |
 | `wifi_conn_info` | `WifiConnInfo` | `use` | `wifi_conn_info` | `argv`, `interval`, `interface` (required) |
 | `disk_io` | `DiskIo` | `use` | `disk_io` | `paths`, `interval`, `duration` |
 | `swap` | `Swap` | `use` | `swap` | `paths`, `interval`, `duration` |
@@ -71,16 +71,23 @@ privileged, and hardware behavior needs its corresponding integration environmen
 | `uptime` | `Uptime` | `use` | `uptime` | `paths`, `interval`, `duration` |
 | `process_io` | `ProcessIo` | `use` | `process_io` | `processes` (required), `interval`, `duration`, `self_only` |
 
-Launch-like entries marked `do` / `use` accept `LaunchMode` from
-`vsm.action.launch_mode`. Select `FOREGROUND` with `device.do()` to await a finalized
-`LogRef` (`Completed` for `Launch`), or use `device.use()` with `BACKGROUND_WAIT` to
-wait on normal scope exit and `BACKGROUND_STOP` to stop and reap on exit. The default is
-`BACKGROUND_STOP`. Wrong entrypoint/mode combinations fail before launch. All modes
-retain ownership and stop on errors/cancellation. Natural waits are cancellable;
-stop/reap/finalization is cancellation resistant. Waiting does not invent a completion
-condition for open-ended services. Finite ping invocations use foreground or
-background-wait; background-stop retains early-exit supervision. Repeated-command loops
-and file collectors retain their scoped API. There is no unowned detach mode.
+Launch-like entries marked `do` / `use` support both invocation styles without
+a mode parameter. `await device.do(action)` waits for natural completion and
+returns a finalized `LogRef` (`Completed` for `Launch`). `device.use(action)`
+establishes readiness and yields an owned capture/process; scope exit stops and
+reaps remaining work and finalizes logs. Explicitly `await capture.wait()` or
+`await process.wait()` inside the scope when natural completion is required.
+Successful tool completion is allowed while the scope remains open, including
+completion during startup when required readiness evidence exists. Missing
+readiness and nonzero exits remain errors; action-specific completeness checks
+still apply.
+
+Natural waits are cancellable; stop/reap/finalization is cancellation resistant.
+Cancelling an individual waiter does not terminate the workload. Waiting does
+not invent a completion condition for open-ended services. For supervised
+concurrent execution, use `run.spawn(device.do(action))`; run exit joins tasks
+on success and cancels siblings on failure. Repeated-command loops and file
+collectors retain their scoped API.
 
 `PollFiles` (including its measurement subclasses), `PidStat`/`ProcessIo`,
 `SocketStat`, `TrafficGenerator` and framework `Rup` default to `duration=None`.
@@ -142,6 +149,11 @@ Ss/WifiConnInfo periodic query failures surface during startup or collection and
 mark logs incomplete. CpuTimeInState preserves before/partial-after snapshots and
 `read_errors` on final-read failure; its processor rejects incomplete captures.
 New frequencies without initial counters have unavailable residency deltas.
+
+Time-series charts default to controller UTC when calibrated timing exists;
+elapsed seconds remain the basis for rate calculations. Untimed axes stay natural.
+See [controller UTC timelines](chart-reports.md#controller-utc-timelines) for
+source-specific timing, uncertainty and unavailable-mapping behavior.
 
 Units: CPU and process utilization are percentages; frequency is Hz; memory is bytes
 with Linux kB converted using 1024; latency is ms; byte/packet rates retain their

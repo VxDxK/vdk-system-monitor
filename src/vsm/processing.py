@@ -43,7 +43,9 @@ class Dataset:
     provenance: Provenance | None = None
 
     def with_source[Record](self, source: LogRef[Record]) -> Dataset:
-        return replace(
+        from vsm._timestamps import timestamp_dataset
+
+        result = replace(
             self,
             provenance=Provenance(
                 path=source.path,
@@ -54,6 +56,7 @@ class Dataset:
                 metadata=source.metadata,
             ),
         )
+        return timestamp_dataset(result, source.metadata)
 
     def __post_init__(self) -> None:
         missing = {c.name for c in self.columns} - set(self.frame.columns)
@@ -195,13 +198,24 @@ def load_native[Record](
         )
     except ValueError, UnicodeDecodeError:
         complete = False
+    metadata = LogMetadata(
+        target=target, provider="rup.ping/3" if upstream_rup else str(first.get("schema"))
+    )
+    companion = path.with_name(path.name + ".metadata.json")
+    if companion.exists():
+        from vsm._dataset_metadata import decode
+
+        saved = decode(json.loads(companion.read_text()))
+        if not isinstance(saved, LogMetadata):
+            raise ValueError("invalid framework log metadata")
+        if not upstream_rup and saved.target.boot_id != target.boot_id:
+            raise ValueError("framework/native log boot mismatch")
+        metadata = saved
     return LogRef(
         path=path,
         schema=schema,
         device_id=device_id or DeviceId("unknown"),
         action_id=action_id or ActionId("imported"),
         complete=complete,
-        metadata=LogMetadata(
-            target=target, provider="rup.ping/3" if upstream_rup else str(first.get("schema"))
-        ),
+        metadata=metadata,
     )

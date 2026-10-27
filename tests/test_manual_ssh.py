@@ -3,6 +3,7 @@
 import asyncio
 import socket
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from manual_examples import ManualExampleChecks, load_example
@@ -21,6 +22,9 @@ class PipelineTests(ManualExampleChecks, unittest.IsolatedAsyncioTestCase):
 
     async def test_ipv6_pipeline(self):
         await self.exercise(address="2001:db8::1")
+
+    async def test_key_auth_pipeline(self):
+        await self.exercise(password=None, client_keys=(Path("/home/alice/.ssh/id_rsa"),))
 
     async def test_address_resolution_and_override(self):
         loop = asyncio.get_running_loop()
@@ -49,6 +53,7 @@ class CLITests(unittest.TestCase):
     def test_defaults_and_overrides(self):
         for extra in (
             [],
+            ["--auth", "password"],
             [
                 "--protocol",
                 "udp",
@@ -77,11 +82,27 @@ class CLITests(unittest.TestCase):
                 prompt.assert_called_once_with("Password for alice@server: ")
                 args = main.call_args.kwargs
                 self.assertEqual(args["password"], "secret")
+                self.assertEqual(args["client_keys"], ())
+                overrides = "--protocol" in extra
                 self.assertEqual(
-                    args["protocol"], TrafficProtocol.UDP if extra else TrafficProtocol.TCP
+                    args["protocol"], TrafficProtocol.UDP if overrides else TrafficProtocol.TCP
                 )
-                self.assertEqual(args["port"], 6000 if extra else 5000)
+                self.assertEqual(args["port"], 6000 if overrides else 5000)
                 run.assert_called_once_with(main.return_value)
+
+    def test_key_auth_skips_password_and_expands_key_path(self):
+        with (
+            patch("sys.argv", ["manual_ssh.py", "alice", "server", "--auth", "key"]),
+            patch.object(example.getpass, "getpass") as prompt,
+            patch.object(example, "main", new_callable=MagicMock, return_value=object()) as main,
+            patch.object(example.asyncio, "run") as run,
+        ):
+            example.cli()
+        prompt.assert_not_called()
+        self.assertIsNone(main.call_args.kwargs["password"])
+        self.assertEqual(main.call_args.kwargs["client_keys"], (Path.home() / ".ssh" / "id_rsa",))
+        self.assertNotIn("auth", main.call_args.kwargs)
+        run.assert_called_once_with(main.return_value)
 
     def test_invalid_arguments_fail_before_password(self):
         for option, value in (
@@ -94,6 +115,7 @@ class CLITests(unittest.TestCase):
             ("--rate-bps", "0"),
             ("--address", "hostname"),
             ("--protocol", "icmp"),
+            ("--auth", "agent"),
         ):
             with (
                 self.subTest(option=option, value=value),
